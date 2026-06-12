@@ -38,11 +38,14 @@ export async function getShopId(): Promise<string | null> {
       const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
       return cached;
     }
-    const { data: u } = await supabase.from("users").select("shop_id").eq("id", user.id).single();
-    if (u?.shop_id) {
+    const { data: u, error: userErr } = await supabase.from("users").select("shop_id").eq("id", user.id).single();
+    if (!userErr && u?.shop_id) {
       if (typeof localStorage !== "undefined") localStorage.setItem("shop_id", u.shop_id);
       return u.shop_id;
     }
+    // Fallback au cache local si la requête RLS échoue
+    const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
+    if (cached) return cached;
     return null;
   } catch {
     const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
