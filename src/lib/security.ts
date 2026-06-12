@@ -53,6 +53,21 @@ export async function getShopId(): Promise<string | null> {
     }
     const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
     if (cached) return cached;
+    // Dernier recours : API avec clé service (bypass RLS)
+    try {
+      const res = await fetch("/api/auth/shop-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      if (res.ok) {
+        const { shopId } = await res.json();
+        if (shopId) {
+          if (typeof localStorage !== "undefined") localStorage.setItem("shop_id", shopId);
+          return shopId;
+        }
+      }
+    } catch {}
     return null;
   } catch {
     const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
