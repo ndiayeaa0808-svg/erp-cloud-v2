@@ -49,7 +49,6 @@ export default function LoginPage() {
       // Nettoyer toute session et cache précédents
       const supabase = createClient();
       await supabase.auth.signOut().catch(() => {});
-      localStorage.removeItem("shop_id");
 
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -64,9 +63,11 @@ export default function LoginPage() {
         return;
       }
 
-      // Forcer le shop_id dans le localStorage
+      // Forcer le shop_id dans le localStorage (après login réussi uniquement)
       if (data.user?.shop_id) {
         localStorage.setItem("shop_id", data.user.shop_id);
+      } else {
+        localStorage.removeItem("shop_id");
       }
 
       // Définir la nouvelle session
