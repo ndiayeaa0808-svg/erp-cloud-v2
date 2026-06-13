@@ -10,6 +10,7 @@ import { Info, Eye, EyeOff, LogIn, UserPlus, ExternalLink, CheckCircle2, Buildin
 import { createClient } from "@/lib/supabase/client";
 import { hasValidConfig, getSupabaseConfig, storeConfig } from "@/lib/supabase/config";
 import { isOnlineSync } from "@/lib/is-online";
+import { cacheSession, hasValidCachedSession } from "@/lib/offline-auth";
 
 export default function LoginPage() {
   const [configured, setConfigured] = useState(false);
@@ -32,6 +33,10 @@ export default function LoginPage() {
   useEffect(() => {
     const valid = hasValidConfig();
     setConfigured(valid);
+    if (valid && !isOnline && hasValidCachedSession()) {
+      window.location.href = "/";
+      return;
+    }
     setChecking(false);
   }, []);
 
@@ -89,6 +94,23 @@ export default function LoginPage() {
 
       // Définir la nouvelle session
       await supabase.auth.setSession(data.session);
+
+      // Cacher la session pour le mode hors-ligne
+      if (data.session) {
+        cacheSession({
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token,
+          expiresAt: data.session.expires_at ? data.session.expires_at * 1000 : Date.now() + 3600000,
+          user: {
+            id: data.session.user?.id || "",
+            email: data.session.user?.email,
+            user_metadata: data.session.user?.user_metadata,
+            app_metadata: data.session.user?.app_metadata,
+          },
+          shopId: data.user?.shop_id || "",
+          userInfo: data.user || {},
+        });
+      }
 
       window.location.href = "/";
     } catch {
@@ -265,7 +287,7 @@ export default function LoginPage() {
               </p>
 
               <div className="rounded-lg border p-3 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground mb-1">📋 Instructions :</p>
+                <p className="font-medium text-foreground mb-1">Instructions :</p>
                 <ol className="list-decimal list-inside space-y-1">
                   <li>Allez sur supabase.com → New Project</li>
                   <li>Dans SQL Editor, exécutez le contenu de <code className="text-amber-400">supabase-schema.sql</code></li>
@@ -276,8 +298,8 @@ export default function LoginPage() {
           ) : !isOnline && !isElectron ? (
             <div className="space-y-4 text-center py-6">
               <WifiOff className="h-12 w-12 mx-auto text-red-400" />
-              <p className="text-muted-foreground">Connexion Internet requise</p>
-              <p className="text-xs text-muted-foreground">Vérifiez votre connexion puis réessayez.</p>
+              <p className="text-muted-foreground">Connexion Internet requise pour se connecter</p>
+              <p className="text-xs text-muted-foreground">Connectez-vous d'abord en ligne, l'application fonctionnera ensuite hors-ligne.</p>
             </div>
           ) : mode === "login" ? (
             <form onSubmit={handleLogin} className="space-y-4">

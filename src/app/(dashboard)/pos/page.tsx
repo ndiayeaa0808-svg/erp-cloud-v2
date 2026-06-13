@@ -18,7 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getShopInfo, getCurrentUser, logAudit, requirePinAction } from "@/lib/security";
-import { isOnline as checkIsOnline } from "@/lib/is-online";
+import { isOnline as checkIsOnline, isOnlineSync } from "@/lib/is-online";
+import { getCachedProducts } from "@/lib/sync/db";
 import {
   Search,
   Plus,
@@ -32,6 +33,7 @@ import {
   Square,
   Lock,
   MessageCircle,
+  WifiOff,
 } from "lucide-react";
 import type { Shop } from "@/types";
 
@@ -87,8 +89,22 @@ export default function POSPage() {
   const [pinError, setPinError] = useState(false);
   const [userId, setUserId] = useState("");
   const [montantVerse, setMontantVerse] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    setIsOffline(!isOnlineSync());
+    if (!isOnlineSync()) return;
+    const on = () => setIsOffline(false);
+    const off = () => setIsOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
 
   useEffect(() => {
     getShopInfo().then(setShop);
@@ -102,12 +118,17 @@ export default function POSPage() {
   }, []);
 
   const loadProducts = useCallback(async () => {
+    if (isOffline) {
+      const cached = await getCachedProducts();
+      setProducts(cached as Product[]);
+      return;
+    }
     const shopId = await getShopId();
     let query = supabase.from("products").select("*").is("deleted_at", null).eq("shop_id", shopId).order("name");
     if (search) query = query.ilike("name", `%${search}%`);
     const { data } = await query.limit(50);
     if (data) setProducts(data as Product[]);
-  }, [search, supabase]);
+  }, [search, supabase, isOffline]);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
@@ -243,9 +264,44 @@ export default function POSPage() {
     const saleProfit = paymentType === "pret" ? 0 : (paymentType === "partiel" ? proportionalProfit : profit);
     const shopId = await getShopId();
     if (!shopId) { setError("Impossible de récupérer la boutique"); setLoading(false); return; }
+    const remaining = total - paidAmount;
+
+    // Mode hors-ligne : utiliser directement le workflow offline
+    if (isOffline) {
+      try {
+        const { checkoutOffline } = await import("@/lib/sync/pos-offline");
+        const result = await checkoutOffline({
+          cart: cart as CartItem[],
+          client: client || "",
+          clientPhone: clientPhone || "",
+          payment,
+          paymentType,
+          total: saleTotal,
+          paidAmount,
+          profit: saleProfit,
+          discount: discountFcfa,
+          vendor,
+          vendorId,
+          shopId,
+        });
+        if (result.success) {
+          setLastSale({ invoice: result.invoiceNumber!, client, clientPhone, total, paidAmount, remaining, payment, paymentType, items: [...cart], discount: discountFcfa });
+          setCart([]);
+          setClient(""); setClientPhone(""); setDiscountFcfa(0); setPaymentType("complet"); setMontantVerse(0);
+          setSuccess(true);
+          setTimeout(() => setSuccess(false), 3000);
+        }
+        setLoading(false);
+        return;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erreur lors de la validation hors-ligne");
+        setLoading(false);
+        return;
+      }
+    }
+
     const invoice = `INV-${Date.now()}`;
     const saleId = crypto.randomUUID();
-    const remaining = total - paidAmount;
     try {
 
       // Insert sale
@@ -368,34 +424,6 @@ export default function POSPage() {
         setTimeout(() => setSuccess(false), 3000);
       }
     } catch (err: unknown) {
-      if (!(await checkIsOnline())) {
-        try {
-          const { checkoutOffline } = await import("@/lib/sync/pos-offline");
-          const result = await checkoutOffline({
-            cart: cart as CartItem[],
-            client: client || "",
-            clientPhone: clientPhone || "",
-            payment,
-            paymentType,
-            total: saleTotal,
-            paidAmount,
-            profit: saleProfit,
-            discount: discountFcfa,
-            vendor,
-            vendorId,
-            shopId,
-          });
-          if (result.success) {
-            setLastSale({ invoice: result.invoiceNumber!, client, clientPhone, total, paidAmount, remaining, payment, paymentType, items: [...cart], discount: discountFcfa });
-            setCart([]);
-            setClient(""); setClientPhone(""); setDiscountFcfa(0); setPaymentType("complet"); setMontantVerse(0);
-            setSuccess(true);
-            setTimeout(() => setSuccess(false), 3000);
-            setLoading(false);
-            return;
-          }
-        } catch {}
-      }
       setError(err instanceof Error ? err.message : "Erreur lors de la validation");
     } finally {
       setLoading(false);
@@ -407,6 +435,7 @@ export default function POSPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Caisse POS</h1>
         <div className="flex items-center gap-2">
+          {isOffline && <Badge variant="default" className="bg-red-500"><WifiOff className="h-3 w-3 mr-1" /> Hors-ligne</Badge>}
           {!registerOpen ? (
             <Button variant="outline" onClick={handleOpenRegister} className="text-amber-500">
               <Receipt className="h-4 w-4 mr-2" /> Ouvrir la caisse
