@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { startSyncListener, onSyncStatus, checkPendingWrites, refreshCache, processSyncQueue, type SyncStatus } from "./sync";
 import { isOnlineSync } from "@/lib/is-online";
+import { createClient } from "@/lib/supabase/client";
 
 interface SyncContextValue {
   status: SyncStatus;
@@ -46,9 +47,17 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       if (t !== undefined) setLastSyncTime(t);
     });
     checkPendingWrites();
-    if (navigator.onLine) refreshCache();
     const cleanup = startSyncListener();
-    return () => { unsub(); cleanup(); };
+
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        if (isOnlineSync()) refreshCache();
+      }
+    });
+    if (isOnlineSync()) refreshCache();
+
+    return () => { unsub(); cleanup(); subscription?.unsubscribe(); };
   }, []);
 
   const triggerSync = useCallback(() => {
