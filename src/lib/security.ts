@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isOnlineSync } from "@/lib/is-online";
 
 export async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -7,19 +8,34 @@ export async function hashPin(pin: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+const PIN_CACHE_KEY = "cached_pin_hash";
+
 export async function verifyPin(userId: string, pin: string): Promise<boolean> {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("users")
-    .select("pin")
-    .eq("id", userId)
-    .single();
-  if (!data?.pin) return false;
-  if (data.pin.length === 4 && !isNaN(Number(data.pin))) {
-    return data.pin === pin;
+  if (isOnlineSync()) {
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("users")
+        .select("pin")
+        .eq("id", userId)
+        .single();
+      if (data?.pin) {
+        const hashed = data.pin.length === 4 && !isNaN(Number(data.pin))
+          ? pin
+          : await hashPin(pin);
+        const valid = data.pin === hashed;
+        if (valid && typeof localStorage !== "undefined") {
+          localStorage.setItem(PIN_CACHE_KEY, data.pin);
+        }
+        return valid;
+      }
+    } catch {}
   }
-  const hashed = await hashPin(pin);
-  return data.pin === hashed;
+  // Fallback offline : vérifier contre le PIN caché
+  const cached = typeof localStorage !== "undefined" ? localStorage.getItem(PIN_CACHE_KEY) : null;
+  if (!cached) return false;
+  const pinToCheck = cached.length === 4 && !isNaN(Number(cached)) ? pin : await hashPin(pin);
+  return cached === pinToCheck;
 }
 
 export async function getCurrentUser() {
@@ -114,5 +130,8 @@ export async function updatePin(userId: string, newPin: string): Promise<boolean
   const supabase = createClient();
   const hashed = await hashPin(newPin);
   const { error } = await supabase.from("users").update({ pin: hashed }).eq("id", userId);
+  if (!error && typeof localStorage !== "undefined") {
+    localStorage.setItem(PIN_CACHE_KEY, hashed);
+  }
   return !error;
 }

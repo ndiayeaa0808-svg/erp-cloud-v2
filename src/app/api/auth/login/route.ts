@@ -32,10 +32,30 @@ export async function POST(request: Request) {
     }
 
     if (!users || users.length === 0) {
-      return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 401 });
+      // Auto-création : chercher l'utilisateur Auth par metadata.login
+      const { data: authUsers } = await adminClient.auth.admin.listUsers();
+      const authUser = authUsers?.users?.find(u => u.user_metadata?.login === login);
+      if (!authUser) {
+        return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 401 });
+      }
+      const meta = authUser.user_metadata || {};
+      const { error: insertErr } = await adminClient.from("users").insert({
+        id: authUser.id, login, email: authUser.email,
+        name: meta.full_name || login, role: meta.role || "caissier",
+        shop_id: meta.shop_id || login, perms: {},
+        is_blocked: false,
+      });
+      if (insertErr) {
+        return NextResponse.json({ error: "Erreur lors de la création du profil" }, { status: 500 });
+      }
+      const { data: newUsers } = await adminClient.from("users").select("*").eq("id", authUser.id).limit(1);
+      if (!newUsers || newUsers.length === 0) {
+        return NextResponse.json({ error: "Erreur de création utilisateur" }, { status: 500 });
+      }
+      var user: any = newUsers[0];
+    } else {
+      var user: any = users[0];
     }
-
-    const user = users[0];
 
     if (user.is_blocked) {
       return NextResponse.json({ error: "Compte bloqué" }, { status: 403 });

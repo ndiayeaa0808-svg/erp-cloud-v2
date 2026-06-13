@@ -31,7 +31,6 @@ import {
 import { useSync } from "@/lib/sync/sync-context";
 import { getPendingWrites, removePendingWrite, getCachedProducts, getCachedClients } from "@/lib/sync/db";
 import { tryRetryPendingWrite, refreshCache } from "@/lib/sync/sync";
-import { isOnlineSync } from "@/lib/is-online";
 import type { Shop } from "@/types";
 import type { PendingWrite, CachedProduct, CachedClient } from "@/lib/sync/db";
 
@@ -50,38 +49,25 @@ export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const load = useCallback(async () => {
-    const shopId = await getShopId();
-    if (!shopId) {
-      const cached = localStorage.getItem("cached_shop");
-      if (cached) { setShop(JSON.parse(cached) as Shop); }
-      setLoading(false);
-      return;
-    }
-    if (!isOnlineSync()) {
-      const cached = localStorage.getItem("cached_shop");
-      if (cached) { setShop(JSON.parse(cached) as Shop); }
-      setLoading(false);
-      return;
-    }
     try {
-      const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
-      if (data) { setShop(data as Shop); localStorage.setItem("cached_shop", JSON.stringify(data)); }
-    } catch {
-      const cached = localStorage.getItem("cached_shop");
-      if (cached) { setShop(JSON.parse(cached) as Shop); }
-    }
+      const shopId = await getShopId();
+      if (shopId) {
+        const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
+        if (data) {
+          setShop(data as Shop);
+          localStorage.setItem("cached_shop", JSON.stringify(data));
+          setLoading(false);
+          return;
+        }
+      }
+    } catch {}
+    const cached = localStorage.getItem("cached_shop");
+    if (cached) try { setShop(JSON.parse(cached) as Shop); } catch {}
     setLoading(false);
   }, [supabase]);
 
   const saveShop = async () => {
     if (!shop) return;
-    if (!isOnlineSync()) {
-      localStorage.setItem("cached_shop", JSON.stringify(shop));
-      setSaving(false);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-      return;
-    }
     setSaving(true);
     await supabase.from("shops").update({
       name: shop.name,

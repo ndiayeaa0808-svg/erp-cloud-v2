@@ -158,8 +158,6 @@ export default function ClientsPage() {
     else setSalesHistory([]);
   }, [selectedClient]);
 
-  useEffect(() => { load(); }, [load]);
-
   const handleDeleteClient = async () => {
     if (!deleteTarget) return;
     const valid = await requirePinAction(userId, pinInput, "delete_client", "clients", deleteTarget);

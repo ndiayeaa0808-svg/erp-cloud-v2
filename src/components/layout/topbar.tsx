@@ -92,6 +92,7 @@ export function Topbar() {
       else if (q === "employés" || q === "employes") router.push("/employees");
       else if (q === "fournisseurs") router.push("/suppliers");
       else if (q === "stock") router.push("/stock");
+      else if (q === "commandes" || q === "cmd") router.push("/purchase-orders");
       else if (q === "utilisateurs") router.push("/users");
       else if (q === "paramètres" || q === "parametres") router.push("/settings");
       else if (q === "admin") router.push("/admin");

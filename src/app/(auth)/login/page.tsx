@@ -171,7 +171,13 @@ export default function LoginPage() {
             }
             const retry = await supabase.auth.signInWithPassword({ email: adminEmail, password });
             if (retry.error) { setError(retry.error.message); return; }
-            if (retry.data.user?.email) localStorage.setItem("shop_id", "admin");
+            localStorage.setItem("shop_id", "admin");
+            localStorage.setItem("user_role", "admin");
+            localStorage.setItem("user_perms", JSON.stringify({
+              dashboard: true, pos: true, products: true, sales: true,
+              credits: true, clients: true, expenses: true, reports: true,
+              cash_register: true, invoices: true, users: true, settings: true,
+            }));
             window.location.href = "/";
             return;
           } catch {
@@ -182,7 +188,13 @@ export default function LoginPage() {
         setError(signInError.message);
         return;
       }
-      if (data.user?.email) localStorage.setItem("shop_id", "admin");
+      localStorage.setItem("shop_id", "admin");
+      localStorage.setItem("user_role", "admin");
+      localStorage.setItem("user_perms", JSON.stringify({
+        dashboard: true, pos: true, products: true, sales: true,
+        credits: true, clients: true, expenses: true, reports: true,
+        cash_register: true, invoices: true, users: true, settings: true,
+      }));
       window.location.href = "/";
     } catch { setError("Erreur de connexion"); }
     setLoading(false);
