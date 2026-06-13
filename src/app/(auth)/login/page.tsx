@@ -113,7 +113,7 @@ export default function LoginPage() {
         });
       }
 
-      refreshCache();
+      await refreshCache();
       window.location.href = "/";
     } catch {
       setError("Erreur de connexion au serveur");
