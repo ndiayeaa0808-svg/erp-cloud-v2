@@ -6,15 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/providers/theme-provider";
 import { createClient } from "@/lib/supabase/client";
-import { getShopId, getCurrentUser } from "@/lib/security";
+import { getShopId } from "@/lib/security";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SyncIndicator } from "@/components/pwa/sync-indicator";
-import { Menu, Search, Sun, Moon, Bell } from "lucide-react";
+import { Menu, Search, Palette, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 interface NotificationItem {
   id: string;
@@ -26,11 +33,13 @@ interface NotificationItem {
 
 export function Topbar() {
   const { sidebarOpen, toggleSidebar, shopName } = useAppStore();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme, themes } = useTheme();
+  const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   useEffect(() => {
     const load = async () => {
@@ -68,6 +77,30 @@ export function Topbar() {
     setUnreadCount(0);
   };
 
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      if (q === "pos" || q === "caisse") router.push("/pos");
+      else if (q === "produits" || q === "stock") router.push("/products");
+      else if (q === "ventes") router.push("/sales");
+      else if (q === "clients") router.push("/clients");
+      else if (q === "factures") router.push("/invoices");
+      else if (q === "dépenses" || q === "depenses") router.push("/expenses");
+      else if (q === "crédits" || q === "credits") router.push("/credits");
+      else if (q === "caisse") router.push("/cash-register");
+      else if (q === "rapports" || q === "reports") router.push("/reports");
+      else if (q === "employés" || q === "employes") router.push("/employees");
+      else if (q === "fournisseurs") router.push("/suppliers");
+      else if (q === "stock") router.push("/stock");
+      else if (q === "utilisateurs") router.push("/users");
+      else if (q === "paramètres" || q === "parametres") router.push("/settings");
+      else if (q === "admin") router.push("/admin");
+      else {
+        setSearchQuery("");
+      }
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4">
       <Button variant="ghost" size="icon" onClick={toggleSidebar} className="shrink-0">
@@ -76,7 +109,13 @@ export function Topbar() {
 
       <div className="relative flex-1 max-w-sm hidden sm:block">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Rechercher..." className="pl-9 h-9" />
+        <Input
+          placeholder="Rechercher une page..."
+          className="pl-9 h-9"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+        />
       </div>
 
       <div className="flex items-center gap-2 ml-auto">
@@ -129,9 +168,26 @@ export function Topbar() {
           </PopoverContent>
         </Popover>
         <SyncIndicator />
-        <Button variant="ghost" size="icon" onClick={toggleTheme}>
-          {theme === "solarized-dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <Button variant="ghost" size="icon" className="relative">
+              <Palette className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {(Object.entries(themes) as [string, { name: string; icon: string }][]).map(([key, t]) => (
+              <DropdownMenuItem
+                key={key}
+                onClick={() => setTheme(key as any)}
+                className={cn("flex items-center gap-2", theme === key && "bg-accent")}
+              >
+                <span className="text-base">{t.icon}</span>
+                <span className="text-sm">{t.name}</span>
+                {theme === key && <span className="ml-auto text-xs text-primary">✓</span>}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

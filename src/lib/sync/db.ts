@@ -60,11 +60,17 @@ export interface CachedSale {
 
 export interface CachedExpense {
   id: string;
-  label: string;
-  amount: number;
+  shop_id?: string;
+  desc: string;
+  cat?: string;
+  amount?: number;
   date: string;
-  category: string;
-  description?: string;
+  note?: string;
+  receipt_photo?: string;
+  recurrence?: string;
+  workflow_status?: string;
+  created_at?: string;
+  updated_at?: string;
   updatedAt: string;
 }
 
@@ -82,6 +88,31 @@ export interface CachedCredit {
   updatedAt: string;
 }
 
+export interface CachedEmployee {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  role: string;
+  salary?: number;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface CachedCashRegister {
+  id: string;
+  shop_id: string;
+  initial_amount: number;
+  current_amount: number;
+  status: string;
+  opened_at: string;
+  closed_at?: string;
+  vendor?: string;
+  vendor_id?: string;
+  note?: string;
+  updatedAt: string;
+}
+
 export interface SyncMeta {
   id: string;
   lastSyncTime: string;
@@ -95,10 +126,23 @@ class LocalDB extends Dexie {
   sales!: Table<CachedSale>;
   expenses!: Table<CachedExpense>;
   credits!: Table<CachedCredit>;
+  employees!: Table<CachedEmployee>;
+  cashRegisters!: Table<CachedCashRegister>;
   syncMeta!: Table<SyncMeta>;
 
   constructor() {
     super("erp-local");
+    this.version(4).stores({
+      pendingWrites: "++id, table, action, createdAt, retries",
+      products: "id, name, cat, updatedAt",
+      clients: "id, name, updatedAt",
+      sales: "id, invoice_number, date, client, status, created_at, updatedAt",
+      expenses: "id, date, category, updatedAt",
+      credits: "id, client, status, date, updatedAt",
+      employees: "id, name, role, updatedAt",
+      cashRegisters: "id, status, opened_at, updatedAt",
+      syncMeta: "id",
+    });
     this.version(3).stores({
       pendingWrites: "++id, table, action, createdAt, retries",
       products: "id, name, cat, updatedAt",
@@ -198,6 +242,61 @@ export async function getCachedClients(): Promise<CachedClient[]> {
   return localDB.clients.toArray();
 }
 
+export async function cacheSales(sales: CachedSale[]) {
+  if (!localDB) return;
+  await localDB.sales.bulkPut(sales);
+}
+
+export async function getCachedSales(): Promise<CachedSale[]> {
+  if (!localDB) return [];
+  return localDB.sales.orderBy("created_at").reverse().toArray();
+}
+
+export async function cacheExpenses(expenses: CachedExpense[]) {
+  if (!localDB) return;
+  await localDB.expenses.bulkPut(expenses);
+}
+
+export async function getCachedExpenses(): Promise<CachedExpense[]> {
+  if (!localDB) return [];
+  return localDB.expenses.orderBy("date").reverse().toArray();
+}
+
+export async function cacheCredits(credits: CachedCredit[]) {
+  if (!localDB) return;
+  await localDB.credits.bulkPut(credits);
+}
+
+export async function getCachedCredits(): Promise<CachedCredit[]> {
+  if (!localDB) return [];
+  return localDB.credits.toArray();
+}
+
+export async function cacheEmployees(employees: CachedEmployee[]) {
+  if (!localDB) return;
+  await localDB.employees.bulkPut(employees);
+}
+
+export async function getCachedEmployees(): Promise<CachedEmployee[]> {
+  if (!localDB) return [];
+  return localDB.employees.toArray();
+}
+
+export async function cacheCashRegisters(registers: CachedCashRegister[]) {
+  if (!localDB) return;
+  await localDB.cashRegisters.bulkPut(registers);
+}
+
+export async function getCachedCashRegisters(): Promise<CachedCashRegister[]> {
+  if (!localDB) return [];
+  return localDB.cashRegisters.orderBy("opened_at").reverse().toArray();
+}
+
+export async function getCachedSaleById(id: string): Promise<CachedSale | undefined> {
+  if (!localDB) return undefined;
+  return localDB.sales.get(id);
+}
+
 export async function setLastSyncTime() {
   if (!localDB) return;
   const existing = await localDB.syncMeta.get("sync_meta");
@@ -233,37 +332,62 @@ export async function isProcessedId(id: string): Promise<boolean> {
   return meta?.processedIds?.includes(id) ?? false;
 }
 
-export async function cacheSales(sales: CachedSale[]) {
+export async function updateCachedProduct(id: string, updates: Partial<CachedProduct>) {
   if (!localDB) return;
-  await localDB.sales.bulkPut(sales);
+  await localDB.products.update(id, { ...updates, updatedAt: new Date().toISOString() });
 }
 
-export async function getCachedSales(): Promise<CachedSale[]> {
-  if (!localDB) return [];
-  return localDB.sales.orderBy("created_at").reverse().toArray();
-}
-
-export async function cacheExpenses(expenses: CachedExpense[]) {
+export async function updateCachedClient(id: string, updates: Partial<CachedClient>) {
   if (!localDB) return;
-  await localDB.expenses.bulkPut(expenses);
+  await localDB.clients.update(id, { ...updates, updatedAt: new Date().toISOString() });
 }
 
-export async function getCachedExpenses(): Promise<CachedExpense[]> {
-  if (!localDB) return [];
-  return localDB.expenses.orderBy("date").reverse().toArray();
-}
-
-export async function cacheCredits(credits: CachedCredit[]) {
+export async function updateCachedExpense(id: string, updates: Partial<CachedExpense>) {
   if (!localDB) return;
-  await localDB.credits.bulkPut(credits);
+  await localDB.expenses.update(id, { ...updates, updatedAt: new Date().toISOString() });
 }
 
-export async function getCachedCredits(): Promise<CachedCredit[]> {
-  if (!localDB) return [];
-  return localDB.credits.toArray();
+export async function updateCachedCredit(id: string, updates: Partial<CachedCredit>) {
+  if (!localDB) return;
+  await localDB.credits.update(id, { ...updates, updatedAt: new Date().toISOString() });
 }
 
-export async function getCachedSaleById(id: string): Promise<CachedSale | undefined> {
-  if (!localDB) return undefined;
-  return localDB.sales.get(id);
+export async function updateCachedEmployee(id: string, updates: Partial<CachedEmployee>) {
+  if (!localDB) return;
+  await localDB.employees.update(id, { ...updates, updatedAt: new Date().toISOString() });
+}
+
+export async function updateCachedCashRegister(id: string, updates: Partial<CachedCashRegister>) {
+  if (!localDB) return;
+  await localDB.cashRegisters.update(id, { ...updates, updatedAt: new Date().toISOString() });
+}
+
+export async function deleteCachedProduct(id: string) {
+  if (!localDB) return;
+  await localDB.products.delete(id);
+}
+
+export async function deleteCachedClient(id: string) {
+  if (!localDB) return;
+  await localDB.clients.delete(id);
+}
+
+export async function deleteCachedExpense(id: string) {
+  if (!localDB) return;
+  await localDB.expenses.delete(id);
+}
+
+export async function deleteCachedCredit(id: string) {
+  if (!localDB) return;
+  await localDB.credits.delete(id);
+}
+
+export async function deleteCachedEmployee(id: string) {
+  if (!localDB) return;
+  await localDB.employees.delete(id);
+}
+
+export async function deleteCachedCashRegister(id: string) {
+  if (!localDB) return;
+  await localDB.cashRegisters.delete(id);
 }

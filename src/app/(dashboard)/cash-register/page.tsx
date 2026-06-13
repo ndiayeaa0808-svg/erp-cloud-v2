@@ -44,6 +44,10 @@ import {
   FileDown,
 } from "lucide-react";
 import type { CashRegister } from "@/types";
+import { isOnlineSync } from "@/lib/is-online";
+import { loadCashRegistersOffline } from "@/lib/offline-data";
+import { createCashRegisterOffline, updateCashRegisterOffline } from "@/lib/sync/sync";
+import { getCachedCashRegisters, cacheCashRegisters, updateCachedCashRegister } from "@/lib/sync/db";
 
 export default function CashRegisterPage() {
   useRequirePermission("cash_register");
@@ -77,22 +81,53 @@ export default function CashRegisterPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const shopId = await getShopId();
-    if (!shopId) { setLoading(false); return; }
-    const { data } = await supabase
-      .from("cash_registers")
-      .select("*")
-      .eq("shop_id", shopId)
-      .order("created_at", { ascending: false });
-    if (data) setRegisters(data as CashRegister[]);
-    const active = (data as CashRegister[] || []).find((r) => r.status === "open" && r.user_id === vendorId);
-    setCurrentRegister(active || null);
+    try {
+      const data = await loadCashRegistersOffline() as unknown as CashRegister[];
+      setRegisters(data);
+      const openReg = data.find((r) => r.status === "open");
+      setCurrentRegister(openReg || null);
+    } catch {
+      try {
+        const shopId = await getShopId();
+        if (!shopId) { setLoading(false); return; }
+        const { data } = await supabase.from("cash_registers").select("*").eq("shop_id", shopId).order("opened_at", { ascending: false }).limit(50);
+        if (data) {
+          setRegisters(data as CashRegister[]);
+          const openReg = data.find((r) => r.status === "open");
+          setCurrentRegister(openReg || null);
+        }
+      } catch {}
+    }
     setLoading(false);
-  }, [vendorId, supabase]);
+  }, [supabase]);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleOpen = async () => {
+  const handleOpenRegister = async () => {
+    if (!isOnlineSync()) {
+      const shopId = await getShopId();
+      if (!shopId) return;
+      const now = new Date().toISOString();
+      const regData = {
+        id: crypto.randomUUID(),
+        shop_id: shopId,
+        initial_amount: initialAmount,
+        current_amount: initialAmount,
+        status: "open",
+        opened_at: now,
+        vendor: vendor,
+        vendor_id: vendorId,
+        note: note,
+      };
+      await createCashRegisterOffline(regData);
+      const cached = await getCachedCashRegisters();
+      await cacheCashRegisters([{ ...regData, updatedAt: now } as any, ...cached]);
+      setOpenDialog(false);
+      setInitialAmount(0);
+      setNote("");
+      load();
+      return;
+    }
     const shopId = await getShopId();
     if (!shopId) return;
     const { data, error: err } = await supabase.from("cash_registers").insert({
@@ -114,8 +149,26 @@ export default function CashRegisterPage() {
     load();
   };
 
-  const handleClose = async () => {
+  const handleCloseRegister = async () => {
     if (!currentRegister) return;
+    if (!isOnlineSync()) {
+      const now = new Date().toISOString();
+      await updateCashRegisterOffline(currentRegister.id, {
+        status: "closed",
+        closed_at: now,
+        actual_amount: actualAmount,
+      });
+      await updateCachedCashRegister(currentRegister.id, {
+        status: "closed",
+        closed_at: now,
+        actual_amount: actualAmount,
+        updatedAt: now,
+      } as any);
+      setCloseDialog(false);
+      setActualAmount(0);
+      load();
+      return;
+    }
     const shopId = await getShopId();
     const diff = actualAmount - (currentRegister.expected_amount || currentRegister.total_sales || 0) - currentRegister.initial_amount;
     const { error: err } = await supabase.from("cash_registers").update({
@@ -337,7 +390,7 @@ export default function CashRegisterPage() {
               <Label>Fond de caisse initial</Label>
               <Input type="number" value={initialAmount || ""} onChange={(e) => setInitialAmount(Number(e.target.value))} />
             </div>
-            <Button onClick={handleOpen} className="w-full">
+            <Button onClick={handleOpenRegister} className="w-full">
               <Play className="h-4 w-4 mr-2" /> Ouvrir la caisse
             </Button>
           </div>
@@ -371,7 +424,7 @@ export default function CashRegisterPage() {
               <Input type="password" placeholder="Code secret" value={pinInput} onChange={(e) => { setPinInput(e.target.value); setPinError(false); }} maxLength={6} className="text-center tracking-widest" />
               {pinError && <p className="text-sm text-red-500">Code incorrect</p>}
             </div>
-            <Button onClick={handleClose} className="w-full">
+            <Button onClick={handleCloseRegister} className="w-full">
               <Square className="h-4 w-4 mr-2" /> Fermer la caisse
             </Button>
           </div>

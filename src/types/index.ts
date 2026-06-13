@@ -289,6 +289,64 @@ export interface AccountingEntry {
   created_at?: string;
 }
 
+export interface Supplier {
+  id: string;
+  shop_id: string;
+  name: string;
+  contact?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  debt?: number;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StockMovement {
+  id: string;
+  shop_id: string;
+  product_id: string;
+  product_name?: string;
+  type: "in" | "out" | "adjustment";
+  qty: number;
+  before?: number;
+  after?: number;
+  reason?: string;
+  user_id?: string;
+  user_name?: string;
+  created_at?: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  shop_id: string;
+  supplier_id?: string;
+  supplier_name?: string;
+  reference?: string;
+  status: "pending" | "ordered" | "partial" | "received" | "cancelled";
+  items?: PurchaseOrderItem[];
+  total?: number;
+  tax?: number;
+  discount?: number;
+  notes?: string;
+  ordered_at?: string;
+  received_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  order_id: string;
+  product_id?: string;
+  product_name: string;
+  qty: number;
+  received_qty?: number;
+  unit_cost: number;
+  total: number;
+}
+
 export interface TableMeta<T> {
   data: T[];
   count: number;

@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
-import { getShopId, getCurrentUser } from "@/lib/security";
+import { getShopId, getCurrentUser, verifyPin, updatePin as updateUserPin } from "@/lib/security";
 import {
   Building,
   Save,
@@ -31,6 +31,7 @@ import {
 import { useSync } from "@/lib/sync/sync-context";
 import { getPendingWrites, removePendingWrite, getCachedProducts, getCachedClients } from "@/lib/sync/db";
 import { tryRetryPendingWrite, refreshCache } from "@/lib/sync/sync";
+import { isOnlineSync } from "@/lib/is-online";
 import type { Shop } from "@/types";
 import type { PendingWrite, CachedProduct, CachedClient } from "@/lib/sync/db";
 
@@ -51,15 +52,26 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     const shopId = await getShopId();
     if (!shopId) { setLoading(false); return; }
+    if (!isOnlineSync()) {
+      const cached = localStorage.getItem("cached_shop");
+      if (cached) { setShop(JSON.parse(cached) as Shop); setLoading(false); return; }
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
-    if (data) setShop(data as Shop);
+    if (data) { setShop(data as Shop); localStorage.setItem("cached_shop", JSON.stringify(data)); }
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => { load(); }, [load]);
-
   const saveShop = async () => {
     if (!shop) return;
+    if (!isOnlineSync()) {
+      localStorage.setItem("cached_shop", JSON.stringify(shop));
+      setSaving(false);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+      return;
+    }
     setSaving(true);
     await supabase.from("shops").update({
       name: shop.name,
@@ -90,15 +102,17 @@ export default function SettingsPage() {
     } catch {}
   };
 
-  const updatePin = async () => {
+  const handleUpdatePin = async () => {
     setPinError("");
     setPinSuccess(false);
     const user = await getCurrentUser();
     if (!user) return;
-    if (pin !== user.pin) { setPinError("Code secret actuel incorrect"); return; }
+    const valid = await verifyPin(user.id, pin);
+    if (!valid) { setPinError("Code secret actuel incorrect"); return; }
     if (newPin.length < 4) { setPinError("Le code doit contenir au moins 4 caractères"); return; }
     if (newPin !== confirmPin) { setPinError("Les codes ne correspondent pas"); return; }
-    await supabase.from("users").update({ pin: newPin }).eq("id", user.id);
+    const ok = await updateUserPin(user.id, newPin);
+    if (!ok) { setPinError("Erreur lors de la mise à jour"); return; }
     setPinSuccess(true);
     setPin("");
     setNewPin("");
@@ -228,7 +242,7 @@ export default function SettingsPage() {
                 <Label>Confirmer le nouveau code</Label>
                 <Input type="password" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} maxLength={6} className="tracking-widest" />
               </div>
-              <Button onClick={updatePin}>
+              <Button onClick={handleUpdatePin}>
                 <Lock className="h-4 w-4 mr-2" /> Changer le code secret
               </Button>
             </CardContent>

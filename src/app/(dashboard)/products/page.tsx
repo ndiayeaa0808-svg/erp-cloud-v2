@@ -43,6 +43,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, requirePinAction, logAudit } from "@/lib/security";
 import { loadProductsOffline } from "@/lib/offline-data";
+import { isOnlineSync } from "@/lib/is-online";
+import { createProductOffline, updateProductOffline, deleteProductOffline, updateStockOffline } from "@/lib/sync/sync";
+import { getCachedProducts, cacheProducts, updateCachedProduct, deleteCachedProduct } from "@/lib/sync/db";
 import {
   Plus,
   Search,
@@ -56,7 +59,9 @@ import {
   ShieldAlert,
   ClipboardList,
   History,
+  Download,
 } from "lucide-react";
+import { exportCSV } from "@/lib/export-csv";
 import type { Product } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +70,8 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [edit, setEdit] = useState<Partial<Product>>({});
@@ -90,6 +97,7 @@ export default function ProductsPage() {
   }, [supabase]);
 
   const load = useCallback(async () => {
+    setPage(1);
     setLoading(true);
     try {
       const allProducts = await loadProductsOffline() as unknown as Product[];
@@ -107,6 +115,30 @@ export default function ProductsPage() {
 
   const save = async () => {
     setError(null);
+    if (!isOnlineSync()) {
+      const shopId = await getShopId();
+      if (!shopId) { setError("Aucune boutique associée à ce compte"); return; }
+      try {
+        const now = new Date().toISOString();
+        if (edit.id) {
+          const { id: _id, created_at: _ca, updated_at: _ua, ...clean } = edit;
+          await updateProductOffline(edit.id, { ...clean, updatedAt: now });
+          await updateCachedProduct(edit.id, { ...clean, updatedAt: now } as any);
+        } else {
+          const newId = crypto.randomUUID();
+          await createProductOffline({ ...edit, id: newId, shop_id: shopId });
+          const cached = await getCachedProducts();
+          await cacheProducts([...cached, { ...edit, id: newId, shop_id: shopId, updatedAt: now } as any]);
+        }
+        setOpen(false);
+        setEdit({});
+        load();
+        return;
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Erreur offline");
+        return;
+      }
+    }
     const shopId = await getShopId();
     if (!shopId) { setError("Aucune boutique associée à ce compte"); return; }
     try {
@@ -136,6 +168,12 @@ export default function ProductsPage() {
         setPinError(false);
         setPinDialog({ open: false, action: "edit" });
         if (pinDialog.action === "delete" && pinDialog.id) {
+          if (!isOnlineSync()) {
+            await deleteProductOffline(pinDialog.id);
+            await deleteCachedProduct(pinDialog.id);
+            load();
+            return;
+          }
           const shopId = await getShopId();
           if (!shopId) return;
           await supabase.from("products").update({ deleted_at: new Date().toISOString() }).eq("id", pinDialog.id).eq("shop_id", shopId);
@@ -152,11 +190,18 @@ export default function ProductsPage() {
     try {
       const valid = await requirePinAction(currentUserId, stockAdjust.pin, "adjust_stock", "product", stockAdjust.id);
       if (valid) {
-        const shopId = await getShopId();
-        if (!shopId) return;
         const newStock = stockAdjust.mode === "add"
           ? (stockAdjust.currentStock + stockAdjust.qty)
           : Math.max(0, stockAdjust.currentStock - stockAdjust.qty);
+        if (!isOnlineSync()) {
+          await updateStockOffline(stockAdjust.id, newStock);
+          await updateCachedProduct(stockAdjust.id, { stock: newStock } as any);
+          setStockAdjust(null);
+          load();
+          return;
+        }
+        const shopId = await getShopId();
+        if (!shopId) return;
         await supabase.from("products").update({ stock: newStock }).eq("id", stockAdjust.id).eq("shop_id", shopId);
         logAudit({ action: "adjust_stock", entity: "products", entity_id: stockAdjust.id, data: { mode: stockAdjust.mode, qty: stockAdjust.qty, from: stockAdjust.currentStock, to: newStock, description: stockAdjust.description } });
         setStockAdjust(null);
@@ -219,6 +264,9 @@ export default function ProductsPage() {
     setHistoryDialog(true);
   };
 
+  const totalPages = Math.max(1, Math.ceil(products.length / pageSize));
+  const paginatedProducts = products.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -235,8 +283,20 @@ export default function ProductsPage() {
               <Grid3X3 className="h-4 w-4" />
             </Button>
           </div>
+          <Button onClick={() => openEdit()}><Plus className="h-4 w-4 mr-2" /> Nouveau produit</Button>
+          <Button variant="outline" onClick={() => exportCSV(products, "produits", [
+            { key: "name", label: "Nom" },
+            { key: "cat", label: "Catégorie" },
+            { key: "ref", label: "Référence" },
+            { key: "retail", label: "Prix détail" },
+            { key: "wholesale", label: "Prix gros" },
+            { key: "cost", label: "Coût" },
+            { key: "stock", label: "Stock" },
+            { key: "threshold", label: "Seuil" },
+            { key: "unit", label: "Unité" },
+            { key: "supplier", label: "Fournisseur" },
+          ])}><Download className="h-4 w-4 mr-2" /> Export CSV</Button>
           <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger render={<Button onClick={() => openEdit()}><Plus className="h-4 w-4 mr-2" /> Nouveau produit</Button>} />
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{edit.id ? "Modifier" : "Nouveau"} produit</DialogTitle>
@@ -389,7 +449,7 @@ export default function ProductsPage() {
                   <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   Aucun produit
                 </TableCell></TableRow>
-              ) : products.map((p) => (
+              ) : paginatedProducts.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell>
                     {p.photo ? (
@@ -441,7 +501,7 @@ export default function ProductsPage() {
               <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
               Aucun produit
             </p>
-          ) : products.map((p) => (
+          ) : paginatedProducts.map((p) => (
             <Card key={p.id} className="overflow-hidden hover:border-amber-500/50 transition-colors group">
               <CardContent className="p-0">
                 <div className="aspect-square bg-muted relative overflow-hidden">
@@ -470,6 +530,33 @@ export default function ProductsPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {products.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
+              Précédent
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {page} sur {totalPages}
+            </span>
+            <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>
+              Suivant
+            </Button>
+          </div>
+          <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+            <SelectTrigger className="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10</SelectItem>
+              <SelectItem value="20">20</SelectItem>
+              <SelectItem value="50">50</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 

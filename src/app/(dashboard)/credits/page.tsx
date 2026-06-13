@@ -41,6 +41,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getCurrentUser, requirePinAction, logAudit } from "@/lib/security";
+import { isOnlineSync } from "@/lib/is-online";
+import { loadCreditsOffline } from "@/lib/offline-data";
+import { createCreditOffline, updateCreditOffline, deleteCreditOffline } from "@/lib/sync/sync";
+import { getCachedCredits, cacheCredits, updateCachedCredit, deleteCachedCredit, getCachedProducts } from "@/lib/sync/db";
 import {
   Plus,
   Search,
@@ -87,20 +91,34 @@ export default function CreditsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const shopId = await getShopId();
-    if (!shopId) { setLoading(false); return; }
-    let q = supabase.from("credits").select("*").eq("shop_id", shopId).order("created_at", { ascending: false });
-    if (search) q = q.ilike("client", `%${search}%`);
-    const { data } = await q;
-    if (data) setCredits(data as Credit[]);
+    try {
+      const data = await loadCreditsOffline() as unknown as Credit[];
+      let filtered = data;
+      if (search) filtered = filtered.filter((c) => c.client?.toLowerCase().includes(search.toLowerCase()));
+      setCredits(filtered);
+    } catch {
+      try {
+        const shopId = await getShopId();
+        if (!shopId) { setLoading(false); return; }
+        let q = supabase.from("credits").select("*").eq("shop_id", shopId).order("created_at", { ascending: false });
+        if (search) q = q.ilike("client", `%${search}%`);
+        const { data } = await q;
+        if (data) setCredits(data as Credit[]);
+      } catch {}
+    }
     const user = await getCurrentUser();
     if (user) setUserId(user.id);
     setLoading(false);
-  }, [search, supabase]);
+  }, [search]);
 
   useEffect(() => { load(); }, [load]);
 
   const loadProducts = async () => {
+    if (!isOnlineSync()) {
+      const cached = await getCachedProducts();
+      setProducts(cached as unknown as Product[]);
+      return;
+    }
     const shopId = await getShopId();
     if (!shopId) return;
     const { data } = await supabase.from("products").select("id,name,retail,wholesale").is("deleted_at", null).eq("shop_id", shopId).order("name");
@@ -142,6 +160,37 @@ export default function CreditsPage() {
     setSaveError("");
     const shopId = await getShopId();
     if (!shopId) { setSaveError("Impossible de récupérer la boutique"); return; }
+
+    if (!isOnlineSync()) {
+      const paidAmount = Number(edit.acompte) || 0;
+      const now = new Date().toISOString();
+      const status = paidAmount >= (edit.total || 0) ? "paid" : paidAmount > 0 ? "partial" : "open";
+      const creditPayload = {
+        id: edit.id || crypto.randomUUID(),
+        shop_id: shopId,
+        client: edit.client,
+        client_phone: edit.client_phone || null,
+        total: edit.total,
+        paid: paidAmount,
+        status,
+        date: now.split("T")[0],
+        note: edit.note || null,
+      };
+      if (edit.id) {
+        await updateCreditOffline(edit.id, creditPayload);
+        await updateCachedCredit(edit.id, { ...creditPayload, updatedAt: now } as any);
+      } else {
+        await createCreditOffline(creditPayload);
+        const cached = await getCachedCredits();
+        await cacheCredits([...cached, { ...creditPayload, updatedAt: now } as any]);
+      }
+      setOpen(false);
+      setSaveError("");
+      setEdit({ client: "", client_phone: "", total: 0, acompte: 0, due: "", note: "", items: [] });
+      load();
+      return;
+    }
+
     if (edit.id) {
       await supabase.from("credits").update({ ...edit, total: Number(edit.total) }).eq("id", edit.id).eq("shop_id", shopId);
     } else {
@@ -195,6 +244,15 @@ export default function CreditsPage() {
     if (!deleteTarget) return;
     const valid = await requirePinAction(userId, pinInput, "delete_credit", "credits", deleteTarget);
     if (!valid) { setPinError(true); return; }
+    if (!isOnlineSync()) {
+      await deleteCreditOffline(deleteTarget);
+      await deleteCachedCredit(deleteTarget);
+      setDeleteTarget(null);
+      setPinInput("");
+      setPinError(false);
+      load();
+      return;
+    }
     const credit = credits.find((c) => c.id === deleteTarget);
     const shopId = await getShopId();
     const { error } = await supabase.from("credits").delete().eq("id", deleteTarget).eq("shop_id", shopId);
@@ -217,10 +275,17 @@ export default function CreditsPage() {
   const addPayment = async () => {
     const credit = credits.find((c) => c.id === payInput.id);
     if (!credit) return;
-    const payments = Array.isArray(credit.payments) ? credit.payments : [];
     const paymentAmount = Number(payInput.amount);
     const newPaid = (credit.paid || 0) + paymentAmount;
     const newStatus = newPaid >= (credit.total || 0) ? "paid" : "partial";
+    if (!isOnlineSync()) {
+      await updateCreditOffline(payInput.id, { paid: newPaid, status: newStatus });
+      await updateCachedCredit(payInput.id, { paid: newPaid, status: newStatus, updatedAt: new Date().toISOString() } as any);
+      setPayInput({ id: "", amount: 0, method: "especes", open: false, note: "" });
+      load();
+      return;
+    }
+    const payments = Array.isArray(credit.payments) ? credit.payments : [];
     const now = new Date().toISOString();
     const shopId = await getShopId();
     if (!shopId) return;

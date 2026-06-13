@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
+
+function hashPin(pin: string): string {
+  return createHash("sha256").update(pin + "erp-cloud-salt").digest("hex");
+}
 
 export async function POST(request: Request) {
   try {
@@ -43,7 +48,7 @@ export async function POST(request: Request) {
       role: role || "caissier",
       perms: perms || {},
       pass: "supabase-auth",
-      pin: "0000",
+      pin: hashPin("0000"),
     }).eq("id", authUser.user.id);
 
     if (updateErr && updateErr.code !== "PGRST116") {

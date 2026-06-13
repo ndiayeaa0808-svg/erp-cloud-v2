@@ -33,10 +33,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId } from "@/lib/security";
+import { useRequirePermission } from "@/lib/use-permission";
 import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
+import { isOnlineSync } from "@/lib/is-online";
+import { loadEmployeesOffline } from "@/lib/offline-data";
+import { createEmployeeOffline, updateEmployeeOffline, deleteEmployeeOffline } from "@/lib/sync/sync";
+import { getCachedEmployees, cacheEmployees, updateCachedEmployee, deleteCachedEmployee } from "@/lib/sync/db";
 import type { Employee } from "@/types";
 
 export default function EmployeesPage() {
+  useRequirePermission("employees");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,11 +52,20 @@ export default function EmployeesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const shopId = await getShopId();
-    let q = supabase.from("employees").select("*").eq("shop_id", shopId).order("name");
-    if (search) q = q.ilike("name", `%${search}%`);
-    const { data } = await q;
-    if (data) setEmployees(data as Employee[]);
+    try {
+      const data = await loadEmployeesOffline() as unknown as Employee[];
+      let filtered = data;
+      if (search) filtered = filtered.filter((e) => e.name?.toLowerCase().includes(search.toLowerCase()));
+      setEmployees(filtered);
+    } catch {
+      try {
+        const shopId = await getShopId();
+        let q = supabase.from("employees").select("*").eq("shop_id", shopId).order("name");
+        if (search) q = q.ilike("name", `%${search}%`);
+        const { data } = await q;
+        if (data) setEmployees(data as Employee[]);
+      } catch {}
+    }
     setLoading(false);
   }, [search, supabase]);
 
@@ -58,6 +73,24 @@ export default function EmployeesPage() {
 
   const save = async () => {
     try {
+      if (!isOnlineSync()) {
+        const shopId = await getShopId();
+        const now = new Date().toISOString();
+        const payload = { ...edit, shop_id: shopId, status: edit.status ?? "active" };
+        if (edit.id) {
+          await updateEmployeeOffline(edit.id, payload);
+          await updateCachedEmployee(edit.id, { ...payload, updatedAt: now } as any);
+        } else {
+          const newId = crypto.randomUUID();
+          await createEmployeeOffline({ ...payload, id: newId });
+          const cached = await getCachedEmployees();
+          await cacheEmployees([...cached, { ...payload, id: newId, updatedAt: now } as any]);
+        }
+        setOpen(false);
+        setEdit({});
+        load();
+        return;
+      }
       const shopId = await getShopId();
       if (edit.id) {
         await supabase.from("employees").update(edit).eq("id", edit.id).eq("shop_id", shopId);
@@ -71,6 +104,12 @@ export default function EmployeesPage() {
   };
 
   const remove = async (id: string) => {
+    if (!isOnlineSync()) {
+      await deleteEmployeeOffline(id);
+      await deleteCachedEmployee(id);
+      load();
+      return;
+    }
     const shopId = await getShopId();
     await supabase.from("employees").delete().eq("id", id).eq("shop_id", shopId);
     load();

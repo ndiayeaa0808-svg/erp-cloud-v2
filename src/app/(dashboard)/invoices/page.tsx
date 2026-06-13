@@ -41,6 +41,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getShopInfo, getCurrentUser, requirePinAction, logAudit } from "@/lib/security";
+import { isOnlineSync } from "@/lib/is-online";
+import { loadSalesOffline } from "@/lib/offline-data";
+import { updateSaleOffline } from "@/lib/sync/sync";
+import { getCachedSales, cacheSales } from "@/lib/sync/db";
 import {
   Search,
   Printer,
@@ -83,6 +87,15 @@ export default function InvoicesPage() {
     setLoading(true);
     const shopId = await getShopId();
     if (!shopId) { setLoading(false); return; }
+
+    if (!isOnlineSync()) {
+      const cached = await loadSalesOffline();
+      setSales(cached.filter((s: any) => !s.deleted_at) as unknown as Sale[]);
+      setDeletedSales(cached.filter((s: any) => s.deleted_at) as unknown as Sale[]);
+      setLoading(false);
+      return;
+    }
+
     const queryDeleted = tab === "deleted";
 
     // Always build a fresh base query for each attempt (Supabase mutates the builder)
@@ -232,6 +245,14 @@ ${styles}
   const handleRestoreInvoice = async (id: string) => {
     const shopId = await getShopId();
     if (!shopId) return;
+    if (!isOnlineSync()) {
+      await updateSaleOffline(id, { invoice_deleted_at: null });
+      const cached = await getCachedSales();
+      const updated = cached.map((s) => s.id === id ? { ...s, invoice_deleted_at: null, updatedAt: new Date().toISOString() } : s);
+      await cacheSales(updated as any);
+      load();
+      return;
+    }
     await supabase.from("sales").update({ invoice_deleted_at: null }).eq("id", id).eq("shop_id", shopId);
     logAudit({ action: "restore_invoice", entity: "sales", entity_id: id, data: {} });
     load();
@@ -241,6 +262,17 @@ ${styles}
     if (!deleteTarget) return;
     const valid = await requirePinAction(userId, pinInput, "delete_invoice", "sale", deleteTarget);
     if (!valid) { setPinError(true); return; }
+    if (!isOnlineSync()) {
+      await updateSaleOffline(deleteTarget, { invoice_deleted_at: new Date().toISOString() });
+      const cached = await getCachedSales();
+      const updated = cached.map((s) => s.id === deleteTarget ? { ...s, invoice_deleted_at: new Date().toISOString(), updatedAt: new Date().toISOString() } : s);
+      await cacheSales(updated as any);
+      setDeleteTarget(null);
+      setPinInput("");
+      setPinError(false);
+      load();
+      return;
+    }
     const shopId = await getShopId();
     if (!shopId) return;
     await supabase.from("sales").update({ invoice_deleted_at: new Date().toISOString() }).eq("id", deleteTarget).eq("shop_id", shopId);

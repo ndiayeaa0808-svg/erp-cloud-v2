@@ -18,12 +18,6 @@ export async function POST(request: Request) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find((u) => u.email === email);
-    if (existingUser) {
-      return NextResponse.json({ error: "Cet email est déjà utilisé" }, { status: 409 });
-    }
-
     const { data, error } = await adminClient.auth.admin.createUser({
       email,
       password,
@@ -32,6 +26,9 @@ export async function POST(request: Request) {
     });
 
     if (error) {
+      if (error.message.includes("already exists") || error.message.includes("already registered")) {
+        return NextResponse.json({ error: "Utilisateur déjà existant. Vérifiez le mot de passe." }, { status: 409 });
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 

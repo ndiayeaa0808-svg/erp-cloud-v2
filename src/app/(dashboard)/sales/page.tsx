@@ -29,11 +29,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getShopInfo, getCurrentUser, requirePinAction, logAudit } from "@/lib/security";
 import { loadSalesOffline } from "@/lib/offline-data";
+import { isOnlineSync } from "@/lib/is-online";
+import { deleteSaleOffline, updateSaleOffline, createSaleOffline } from "@/lib/sync/sync";
+import { getCachedSales, cacheSales } from "@/lib/sync/db";
 import {
   Search,
   Receipt,
@@ -43,7 +49,9 @@ import {
   Printer,
   Lock,
   MessageCircle,
+  Download,
 } from "lucide-react";
+import { exportCSV } from "@/lib/export-csv";
 import type { Sale, Shop } from "@/types";
 
 export default function SalesPage() {
@@ -57,6 +65,8 @@ export default function SalesPage() {
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [shop, setShop] = useState<Shop | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSale, setPreviewSale] = useState<Sale | null>(null);
@@ -99,10 +109,12 @@ export default function SalesPage() {
       if (!item.product_id) continue;
       const multiplier = direction === "add" ? 1 : -1;
       const qty = (item.qty || 0) * multiplier;
-      const { data: prod } = await supabase.from("products").select("stock").eq("id", item.product_id).single();
-      if (prod) {
-        const newStock = Math.max(0, (prod.stock || 0) + qty);
-        await supabase.from("products").update({ stock: newStock }).eq("id", item.product_id);
+      if (isOnlineSync()) {
+        const { data: prod } = await supabase.from("products").select("stock").eq("id", item.product_id).single();
+        if (prod) {
+          const newStock = Math.max(0, (prod.stock || 0) + qty);
+          await supabase.from("products").update({ stock: newStock }).eq("id", item.product_id);
+        }
       }
     }
   };
@@ -110,6 +122,17 @@ export default function SalesPage() {
   const handleDelete = async (saleId: string) => {
     const valid = await requirePinAction(userId, pinInput, "delete_sale", "sale", saleId);
     if (!valid) { setPinError(true); return; }
+    if (!isOnlineSync()) {
+      await deleteSaleOffline(saleId);
+      const cached = await getCachedSales();
+      const updated = cached.map((s) => s.id === saleId ? { ...s, deleted_at: new Date().toISOString(), updatedAt: new Date().toISOString() } : s);
+      await cacheSales(updated as any);
+      setDeleteTarget(null);
+      setPinInput("");
+      setPinError(false);
+      load();
+      return;
+    }
     const shopId = await getShopId();
     if (!shopId) return;
     const { data: sale } = await supabase.from("sales").select("*").eq("id", saleId).eq("shop_id", shopId).single();
@@ -158,6 +181,14 @@ export default function SalesPage() {
   const handleRestore = async (saleId: string) => {
     const shopId = await getShopId();
     if (!shopId) return;
+    if (!isOnlineSync()) {
+      await updateSaleOffline(saleId, { deleted_at: null });
+      const cached = await getCachedSales();
+      const updated = cached.map((s) => s.id === saleId ? { ...s, deleted_at: null, updatedAt: new Date().toISOString() } : s);
+      await cacheSales(updated as any);
+      load();
+      return;
+    }
     const { data: sale } = await supabase.from("sales").select("*").eq("id", saleId).eq("shop_id", shopId).single();
     if (sale) {
       await adjustStockForSale(sale as Sale, "remove");
@@ -199,11 +230,21 @@ export default function SalesPage() {
             {sales.length} ventes · {totalCA.toLocaleString()} FCFA total
           </p>
         </div>
+        <Button variant="outline" onClick={() => exportCSV(sales, "ventes", [
+          { key: "invoice_number", label: "Facture" },
+          { key: "date", label: "Date" },
+          { key: "client", label: "Client" },
+          { key: "type", label: "Type" },
+          { key: "payment", label: "Paiement" },
+          { key: "vendor", label: "Vendeur" },
+          { key: "total", label: "Total" },
+          { key: "profit", label: "Profit" },
+        ])}><Download className="h-4 w-4 mr-2" /> Export CSV</Button>
       </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Rechercher par client..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input placeholder="Rechercher par client..." className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -236,7 +277,7 @@ export default function SalesPage() {
                     <Receipt className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     Aucune vente
                   </TableCell></TableRow>
-                ) : sales.map((s) => {
+                ) : sales.slice((page - 1) * pageSize, page * pageSize).map((s) => {
                   const dt = s.created_at ? new Date(s.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : s.date;
                   return (
                   <TableRow key={s.id}>
@@ -264,6 +305,24 @@ export default function SalesPage() {
               </TableBody>
             </Table>
           </div>
+          {sales.length > pageSize && (
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Lignes par page:</span>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                  <SelectTrigger className="h-7 w-16 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[10, 20, 50, 100].map((s) => <SelectItem key={s} value={String(s)}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page === 1} onClick={() => setPage(page - 1)}>Précédent</Button>
+                <span className="text-xs text-muted-foreground">Page {page}/{Math.ceil(sales.length / pageSize)}</span>
+                <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page >= Math.ceil(sales.length / pageSize)} onClick={() => setPage(page + 1)}>Suivant</Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="deleted" className="mt-4">

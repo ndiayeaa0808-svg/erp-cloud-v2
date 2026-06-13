@@ -1,5 +1,12 @@
 import { createClient } from "@/lib/supabase/client";
 
+export async function hashPin(pin: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pin + "erp-cloud-salt");
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function verifyPin(userId: string, pin: string): Promise<boolean> {
   const supabase = createClient();
   const { data } = await supabase
@@ -7,7 +14,12 @@ export async function verifyPin(userId: string, pin: string): Promise<boolean> {
     .select("pin")
     .eq("id", userId)
     .single();
-  return data?.pin === pin;
+  if (!data?.pin) return false;
+  if (data.pin.length === 4 && !isNaN(Number(data.pin))) {
+    return data.pin === pin;
+  }
+  const hashed = await hashPin(pin);
+  return data.pin === hashed;
 }
 
 export async function getCurrentUser() {
@@ -25,17 +37,14 @@ export async function getCurrentUser() {
 export async function getShopId(): Promise<string | null> {
   const supabase = createClient();
   try {
-    // Toujours donner la priorité à la session Supabase (user_metadata)
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.user_metadata?.shop_id) {
       const sid = session.user.user_metadata.shop_id as string;
       if (typeof localStorage !== "undefined") localStorage.setItem("shop_id", sid);
       return sid;
     }
-    // Fallback: localStorage (utile en mode hors-ligne)
     const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
     if (cached) return cached;
-    // Fallback : requête directe à la table users (nécessite connexion)
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return cached;
@@ -99,4 +108,11 @@ export async function getShopInfo() {
   if (!shopId) return null;
   const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
   return data;
+}
+
+export async function updatePin(userId: string, newPin: string): Promise<boolean> {
+  const supabase = createClient();
+  const hashed = await hashPin(newPin);
+  const { error } = await supabase.from("users").update({ pin: hashed }).eq("id", userId);
+  return !error;
 }

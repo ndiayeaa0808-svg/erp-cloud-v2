@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/client";
 import { getShopId } from "@/lib/security";
 import {
   getCachedProducts, getCachedClients, getCachedSales,
-  getCachedExpenses, getCachedCredits, getCachedSaleById,
+  getCachedExpenses, getCachedCredits, getCachedEmployees, getCachedCashRegisters,
+  getCachedSaleById,
   cacheProducts, cacheClients, cacheSales, cacheExpenses, cacheCredits,
+  cacheEmployees, cacheCashRegisters,
 } from "@/lib/sync/db";
 
 async function loadWithCache<T>(
@@ -83,5 +85,27 @@ export async function loadCreditsOffline() {
     () => supabase.from("credits").select("*").eq("shop_id", shopId).limit(200),
     cacheCredits,
     getCachedCredits,
+  );
+}
+
+export async function loadEmployeesOffline() {
+  const supabase = createClient();
+  const shopId = await getShopId();
+  return loadWithCache(
+    "employees",
+    () => supabase.from("employees").select("*").eq("shop_id", shopId).order("name"),
+    cacheEmployees,
+    getCachedEmployees,
+  );
+}
+
+export async function loadCashRegistersOffline() {
+  const supabase = createClient();
+  const shopId = await getShopId();
+  return loadWithCache(
+    "cashRegisters",
+    () => supabase.from("cash_registers").select("*").eq("shop_id", shopId).order("opened_at", { ascending: false }).limit(100),
+    cacheCashRegisters,
+    getCachedCashRegisters,
   );
 }

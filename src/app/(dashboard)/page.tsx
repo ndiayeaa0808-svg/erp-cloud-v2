@@ -41,6 +41,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { isOnlineSync } from "@/lib/is-online";
+import { getCachedProducts, getCachedClients, getCachedSales, getCachedExpenses, getCachedCredits } from "@/lib/sync/db";
 
 type Period = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
@@ -75,6 +77,60 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (!isOnlineSync()) {
+        const [products, clients, sales, expenses, credits] = await Promise.all([
+          getCachedProducts(), getCachedClients(), getCachedSales(), getCachedExpenses(), getCachedCredits(),
+        ]);
+        const today = new Date().toISOString().split("T")[0];
+        const todaySales = sales.filter((s) => (s.created_at || "").startsWith(today));
+        const todaySalesTotal = todaySales.reduce((s, r) => s + (r.total || 0), 0);
+        const todaySalesProfit = todaySales.reduce((s, r) => s + (r.profit || 0), 0);
+        const todayExpensesTotal = expenses.filter((e) => (e.date || "").startsWith(today)).reduce((s, r) => s + (r.amount || 0), 0);
+        const lowStockData = products.filter((p) => (p.stock || 0) < (p.threshold || 10));
+        const recentSales = sales.slice(0, 10);
+        const topProductsMap = new Map<string, { name: string; total: number; count: number }>();
+        for (const sale of sales) {
+          if (sale.items && Array.isArray(sale.items)) for (const item of sale.items as any[]) {
+            const existing = topProductsMap.get(item.product_name) || { name: item.product_name, total: 0, count: 0 };
+            existing.total += item.total || 0;
+            existing.count += item.qty || 0;
+            topProductsMap.set(item.product_name, existing);
+          }
+        }
+        const topProducts = Array.from(topProductsMap.values()).sort((a, b) => b.total - a.total).slice(0, 5);
+        const stockValue = products.reduce((s, p) => s + ((p.cost || 0) * (p.stock || 0)), 0);
+        const potentialSaleValue = products.reduce((s, p) => s + ((p.retail || 0) * (p.stock || 0)), 0);
+        const pendingCredits = credits.reduce((s, c) => s + ((c.total || 0) - (c.paid || 0)), 0);
+        const creditCollections = credits.reduce((s, c) => s + (c.paid || 0), 0);
+        const totalRevenue = sales.reduce((s, r) => s + (r.total || 0), 0);
+        const totalProfit = sales.reduce((s, r) => s + (r.profit || 0), 0);
+        const totalExpenses = expenses.reduce((s, r) => s + (r.amount || 0), 0);
+        setData({
+          todaySales: todaySalesTotal,
+          todaySalesCount: todaySales.length,
+          productsCount: products.length,
+          lowStock: lowStockData.length,
+          clientsCount: clients.length,
+          newClients: 0,
+          totalRevenue,
+          totalProfit,
+          totalExpenses,
+          netProfit: totalProfit - totalExpenses,
+          stockValue,
+          potentialSaleValue,
+          stockMargin: potentialSaleValue - stockValue,
+          creditCollections,
+          recentSales: recentSales as any,
+          lowStockProducts: lowStockData as any,
+          pendingCredits,
+          todayExpenses: todayExpensesTotal,
+          topProducts,
+          revenueByPeriod: [],
+          paymentBreakdown: [],
+        });
+        setLoading(false);
+        return;
+      }
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayStr = today.toISOString();

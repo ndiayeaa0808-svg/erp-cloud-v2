@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId } from "@/lib/security";
+import { isOnlineSync } from "@/lib/is-online";
+import { getCachedProducts, getCachedSales, getCachedExpenses, getCachedCredits } from "@/lib/sync/db";
 import {
   BarChart,
   TrendingUp,
@@ -50,6 +52,80 @@ export default function ReportsPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const load = useCallback(async () => {
+    if (!isOnlineSync()) {
+      const [products, sales, expenses, credits] = await Promise.all([
+        getCachedProducts(), getCachedSales(), getCachedExpenses(), getCachedCredits(),
+      ]);
+      const periodStart = new Date(filterYear, filterMonth, 1);
+      const periodEnd = new Date(filterYear, filterMonth + 1, 0, 23, 59, 59);
+      const periodSales = sales.filter((s) => {
+        const d = new Date(s.created_at || s.date);
+        return d >= periodStart && d <= periodEnd;
+      });
+      const periodExpenses = expenses.filter((e) => {
+        const d = new Date(e.date);
+        return d >= periodStart && d <= periodEnd;
+      });
+      const todayStr = new Date().toISOString().split("T")[0];
+      const todaySales = sales.filter((s) => (s.created_at || "").startsWith(todayStr));
+      const todayExpenses = expenses.filter((e) => (e.date || "").startsWith(todayStr));
+      const creditsAll = credits;
+      const productsAll = products;
+      const daysInMonth = new Date(filterYear, filterMonth + 1, 0).getDate();
+      const vendorMap = new Map<string, { total: number; profit: number; count: number; days: Record<number, number> }>();
+      const productMap = new Map<string, { total: number; count: number }>();
+      const paymentMap = new Map<string, number>();
+      for (const s of sales) {
+        const v = s.vendor || "Inconnu";
+        const existing = vendorMap.get(v) || { total: 0, profit: 0, count: 0, days: {} };
+        existing.total += s.total || 0;
+        existing.profit += s.profit || 0;
+        existing.count += 1;
+        const day = s.created_at ? new Date(s.created_at).getDate() : 0;
+        if (day >= 1 && day <= daysInMonth) existing.days[day] = (existing.days[day] || 0) + (s.total || 0);
+        vendorMap.set(v, existing);
+        const pm = s.payment || "especes";
+        paymentMap.set(pm, (paymentMap.get(pm) || 0) + (s.total || 0));
+        if (s.items && Array.isArray(s.items)) {
+          for (const item of s.items as any[]) {
+            const p = productMap.get(item.product_name) || { total: 0, count: 0 };
+            p.total += item.total || 0;
+            p.count += item.qty || 0;
+            productMap.set(item.product_name, p);
+          }
+        }
+      }
+      setData({
+        period: {
+          sales: periodSales.reduce((s, r) => s + (r.total || 0), 0),
+          profit: periodSales.reduce((s, r) => s + (r.profit || 0), 0),
+          count: periodSales.length,
+          expenses: periodExpenses.reduce((s, r) => s + (r.amount || 0), 0),
+        },
+        total: {
+          sales: sales.reduce((s, r) => s + (r.total || 0), 0),
+          expenses: expenses.reduce((s, r) => s + (r.amount || 0), 0),
+          profit: sales.reduce((s, r) => s + (r.profit || 0), 0),
+        },
+        credits: {
+          total: creditsAll.reduce((s, c) => s + (c.total || 0), 0),
+          pending: creditsAll.filter((c) => c.status !== "paid").reduce((s, c) => s + ((c.total || 0) - (c.paid || 0)), 0),
+          paid: creditsAll.filter((c) => c.status === "paid").reduce((s, c) => s + (c.total || 0), 0),
+        },
+        today: {
+          sales: todaySales.reduce((s, r) => s + (r.total || 0), 0),
+          cash: todaySales.filter((r) => r.payment === "especes").reduce((s, r) => s + (r.total || 0), 0),
+          mobile: todaySales.filter((r) => ["orange_money", "wave", "free_money"].includes(r.payment)).reduce((s, r) => s + (r.total || 0), 0),
+          expenses: todayExpenses.reduce((s, r) => s + (r.amount || 0), 0),
+        },
+        byVendor: Array.from(vendorMap.entries()).map(([vendor, v]) => ({ vendor, ...v })).sort((a, b) => b.total - a.total),
+        topProducts: Array.from(productMap.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total).slice(0, 10),
+        paymentBreakdown: Array.from(paymentMap.entries()).map(([name, total]) => ({ name, total })),
+        stockProducts: productsAll as { id: string; name: string; stock: number; cost: number; retail: number; threshold: number }[],
+      });
+      return;
+    }
+
     const shopId = await getShopId();
     const todayStr = new Date().toISOString().split("T")[0];
     const monthStart = new Date(filterYear, filterMonth, 1).toISOString();

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, Eye, EyeOff, LogIn, UserPlus, ExternalLink, CheckCircle2, Building2, WifiOff } from "lucide-react";
+import { Info, Eye, EyeOff, LogIn, UserPlus, ExternalLink, CheckCircle2, Building2, WifiOff, Key } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { hasValidConfig, getSupabaseConfig, storeConfig } from "@/lib/supabase/config";
 import { isOnlineSync } from "@/lib/is-online";
@@ -16,7 +16,7 @@ import { refreshCache } from "@/lib/sync/sync";
 export default function LoginPage() {
   const [configured, setConfigured] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "admin">("login");
 
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +25,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [adminEmail, setAdminEmail] = useState("ndiayeaO8@gmail.com");
+  const [licenseCode, setLicenseCode] = useState("");
+  const [licenseValid, setLicenseValid] = useState(false);
+  const [licensePlan, setLicensePlan] = useState("");
+  const [licenseChecking, setLicenseChecking] = useState(false);
 
   const [supabaseUrl, setSupabaseUrl] = useState("");
   const [supabaseKey, setSupabaseKey] = useState("");
@@ -102,6 +108,16 @@ export default function LoginPage() {
       // Définir la nouvelle session
       await supabase.auth.setSession(data.session);
 
+      // Activer la licence si un code était stocké dans les metadata
+      const metadata = data.session?.user?.user_metadata;
+      if (metadata?.license_code && data.user?.shop_id) {
+        fetch("/api/licenses/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shopId: data.user.shop_id, licenseCode: metadata.license_code }),
+        }).catch(() => {});
+      }
+
       // Cacher la session pour le mode hors-ligne
       if (data.session) {
         cacheSession({
@@ -128,6 +144,75 @@ export default function LoginPage() {
     }
   };
 
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut().catch(() => {});
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: adminEmail,
+        password,
+      });
+      if (signInError) {
+        const msg = signInError.message.toLowerCase();
+        if (msg.includes("invalid login") || msg.includes("invalid credentials") || msg.includes("user not found")) {
+          try {
+            const setupRes = await fetch("/api/admin/setup", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: adminEmail, password }),
+            });
+            const setupData = await setupRes.json();
+            if (!setupRes.ok) {
+              setError(setupData.error || "Impossible de créer le compte admin");
+              return;
+            }
+            const retry = await supabase.auth.signInWithPassword({ email: adminEmail, password });
+            if (retry.error) { setError(retry.error.message); return; }
+            if (retry.data.user?.email) localStorage.setItem("shop_id", "admin");
+            window.location.href = "/";
+            return;
+          } catch {
+            setError("Erreur lors de la création du compte. Vérifie que le serveur est bien relancé après l'ajout du .env.local");
+            return;
+          }
+        }
+        setError(signInError.message);
+        return;
+      }
+      if (data.user?.email) localStorage.setItem("shop_id", "admin");
+      window.location.href = "/";
+    } catch { setError("Erreur de connexion"); }
+    setLoading(false);
+  };
+
+  const handleCheckLicense = async () => {
+    if (!licenseCode.trim()) return;
+    setLicenseChecking(true);
+    try {
+      const res = await fetch("/api/licenses/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: licenseCode.trim() }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setLicenseValid(true);
+        setLicensePlan(data.plan);
+        setError(null);
+      } else {
+        setLicenseValid(false);
+        setLicensePlan("");
+        setError(data.error || "Code invalide");
+      }
+    } catch {
+      setError("Erreur de validation");
+    }
+    setLicenseChecking(false);
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOnline && !isElectron) {
@@ -152,6 +237,8 @@ export default function LoginPage() {
           data: {
             shop_name: shopName || "Ma Boutique",
             full_name: fullName || login,
+            login: login,
+            license_code: licenseCode.trim(),
           },
         },
       });
@@ -161,6 +248,8 @@ export default function LoginPage() {
         return;
       }
 
+      setLicenseCode("");
+      setLicenseValid(false);
       setMode("login");
       setError("Compte créé ! Connectez-vous avec vos identifiants.");
     } catch {
@@ -215,9 +304,11 @@ export default function LoginPage() {
           <CardDescription>
             {!configured
               ? "Configurez votre projet Supabase"
-              : mode === "login"
-                ? "Connectez-vous à votre boutique"
-                : "Créez votre boutique"}
+              : mode === "admin"
+                ? "Connexion administrateur"
+                : mode === "login"
+                  ? "Connectez-vous à votre boutique"
+                  : "Créez votre boutique"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -309,6 +400,63 @@ export default function LoginPage() {
               <p className="text-muted-foreground">Connexion Internet requise pour se connecter</p>
               <p className="text-xs text-muted-foreground">Connectez-vous d'abord en ligne, l'application fonctionnera ensuite hors-ligne.</p>
             </div>
+          ) : mode === "admin" ? (
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div className="text-center mb-2">
+                <p className="text-sm font-medium text-amber-400">Connexion administrateur</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adminEmail">Email</Label>
+                <Input
+                  id="adminEmail"
+                  type="email"
+                  placeholder="ndiayeaO8@gmail.com"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="adminPassword">Mot de passe</Label>
+                <div className="relative">
+                  <Input
+                    id="adminPassword"
+                    type={showPassword ? "text" : "password"}
+                    placeholder=""
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Connexion..." : <><LogIn className="mr-2 h-4 w-4" /> Connexion admin</>}
+              </Button>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => { setMode("login"); setError(null); setPassword(""); }}
+                  className="text-xs text-muted-foreground hover:text-amber-400 underline underline-offset-2"
+                >
+                  Retour connexion boutique
+                </button>
+              </div>
+            </form>
           ) : mode === "login" ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
@@ -359,18 +507,78 @@ export default function LoginPage() {
                 {loading ? "Connexion..." : <><LogIn className="mr-2 h-4 w-4" /> Se connecter</>}
               </Button>
 
-              <div className="text-center">
+              <div className="text-center space-y-1">
                 <button
                   type="button"
                   onClick={() => { setMode("register"); setError(null); }}
-                  className="text-xs text-muted-foreground hover:text-amber-400 underline underline-offset-2"
+                  className="text-xs text-muted-foreground hover:text-amber-400 underline underline-offset-2 block"
                 >
                   Pas encore de compte ? Créer ma boutique
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMode("admin"); setError(null); }}
+                  className="text-xs text-muted-foreground/50 hover:text-amber-400 underline underline-offset-2 block"
+                >
+                  Administrateur
+                </button>
+              </div>
+            </form>
+          ) : !licenseValid ? (
+            <form onSubmit={(e) => { e.preventDefault(); handleCheckLicense(); }} className="space-y-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  Vous devez avoir un code de licence pour créer votre boutique.
+                  Contactez l'administrateur pour en obtenir un.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label htmlFor="licenseCode">Code de licence</Label>
+                <Input
+                  id="licenseCode"
+                  type="text"
+                  placeholder="XXXX-XXXX-XXXX-XXXX"
+                  value={licenseCode}
+                  onChange={(e) => { setLicenseCode(e.target.value); setLicenseValid(false); setError(null); }}
+                  className="text-center font-mono text-lg tracking-wider"
+                  required
+                />
+              </div>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <Button type="submit" className="w-full" disabled={licenseChecking}>
+                {licenseChecking ? "Vérification..." : "Valider le code"}
+              </Button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => { setMode("login"); setError(null); }}
+                  className="text-xs text-muted-foreground hover:text-amber-400 underline underline-offset-2"
+                >
+                  Déjà un compte ? Se connecter
                 </button>
               </div>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
+              <Alert className="border-emerald-500/50">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <AlertDescription className="text-xs text-emerald-500">
+                  Code valide &mdash; Plan : {licensePlan === "trial" ? "Essai 7 jours" :
+                    licensePlan === "monthly" ? "Mensuel" :
+                    licensePlan === "quarterly" ? "Trimestriel" :
+                    licensePlan === "semi_annual" ? "Semestriel" : "À vie"}
+                </AlertDescription>
+              </Alert>
+
               <div className="space-y-2">
                 <Label htmlFor="shopName">Nom de la boutique</Label>
                 <Input

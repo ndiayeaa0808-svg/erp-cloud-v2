@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/client";
 import {
   getPendingWrites, removePendingWrite, updatePendingWriteRetry,
-  cacheProducts, cacheClients, cacheSales, cacheExpenses, cacheCredits, addPendingWrite,
+  cacheProducts, cacheClients, cacheSales, cacheExpenses, cacheCredits,
+  cacheEmployees, cacheCashRegisters,
+  addPendingWrite,
   setLastSyncTime, getLastSyncTime, cleanupStaleWrites, clearAllPendingWrites,
   addProcessedId, isProcessedId,
 } from "./db";
@@ -93,6 +95,9 @@ export async function processSyncQueue() {
       } else if (write.table === "sales" && write.action === "delete") {
         const { error } = await supabase.from("sales").update({ deleted_at: new Date().toISOString() }).eq("id", write.entityId!);
         if (error) throw error;
+      } else if (write.table === "sales" && write.action === "update") {
+        const { error } = await supabase.from("sales").update(payload).eq("id", write.entityId!);
+        if (error) throw error;
       } else if (write.table === "credits" && write.action === "create") {
         const { error } = await supabase.from("credits").insert(payload);
         if (error && error.code === "PGRST204") {
@@ -108,8 +113,44 @@ export async function processSyncQueue() {
           }
           throw error;
         }
+      } else if (write.table === "credits" && write.action === "update") {
+        const { error } = await supabase.from("credits").update(payload).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "credits" && write.action === "delete") {
+        const { error } = await supabase.from("credits").delete().eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "products" && (write.action === "create" || write.action === "update")) {
+        const { error } = await supabase.from("products").upsert(payload).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "products" && write.action === "delete") {
+        const { error } = await supabase.from("products").update({ deleted_at: new Date().toISOString() }).eq("id", write.entityId!);
+        if (error) throw error;
       } else if (write.table === "stock" && write.action === "update") {
         const { error } = await supabase.from("products").update({ stock: payload.stock }).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "clients" && (write.action === "create" || write.action === "update")) {
+        const { error } = await supabase.from("clients").upsert(payload).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "clients" && write.action === "delete") {
+        const { error } = await supabase.from("clients").delete().eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "expenses" && (write.action === "create" || write.action === "update")) {
+        const { error } = await supabase.from("expenses").upsert(payload).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "expenses" && write.action === "delete") {
+        const { error } = await supabase.from("expenses").delete().eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "employees" && (write.action === "create" || write.action === "update")) {
+        const { error } = await supabase.from("employees").upsert(payload).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "employees" && write.action === "delete") {
+        const { error } = await supabase.from("employees").delete().eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "cash_registers" && (write.action === "create" || write.action === "update")) {
+        const { error } = await supabase.from("cash_registers").upsert(payload).eq("id", write.entityId!);
+        if (error) throw error;
+      } else if (write.table === "cash_registers" && write.action === "delete") {
+        const { error } = await supabase.from("cash_registers").delete().eq("id", write.entityId!);
         if (error) throw error;
       }
 
@@ -138,7 +179,6 @@ export async function processSyncQueue() {
       description: failCount > 0 ? `${failCount} échec(s)` : undefined,
       duration: 3000,
     });
-    // Rafraîchir le cache local après sync
     refreshCache();
   }
 
@@ -226,6 +266,11 @@ export async function createSaleOffline(salePayload: Record<string, unknown>) {
   await checkPendingWrites();
 }
 
+export async function updateSaleOffline(saleId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("sales", "update", payload, saleId);
+  await checkPendingWrites();
+}
+
 export async function deleteSaleOffline(saleId: string) {
   await addPendingWrite("sales", "delete", {}, saleId);
   await checkPendingWrites();
@@ -233,6 +278,96 @@ export async function deleteSaleOffline(saleId: string) {
 
 export async function createCreditOffline(creditPayload: Record<string, unknown>) {
   await addPendingWrite("credits", "create", creditPayload);
+  await checkPendingWrites();
+}
+
+export async function updateCreditOffline(creditId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("credits", "update", payload, creditId);
+  await checkPendingWrites();
+}
+
+export async function deleteCreditOffline(creditId: string) {
+  await addPendingWrite("credits", "delete", {}, creditId);
+  await checkPendingWrites();
+}
+
+export async function createProductOffline(productPayload: Record<string, unknown>) {
+  const entityId = (productPayload.id as string) || crypto.randomUUID();
+  await addPendingWrite("products", "create", productPayload, entityId);
+  await checkPendingWrites();
+}
+
+export async function updateProductOffline(productId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("products", "update", payload, productId);
+  await checkPendingWrites();
+}
+
+export async function deleteProductOffline(productId: string) {
+  await addPendingWrite("products", "delete", {}, productId);
+  await checkPendingWrites();
+}
+
+export async function updateStockOffline(productId: string, stock: number) {
+  await addPendingWrite("stock", "update", { stock }, productId);
+  await checkPendingWrites();
+}
+
+export async function createClientOffline(clientPayload: Record<string, unknown>) {
+  const entityId = (clientPayload.id as string) || crypto.randomUUID();
+  await addPendingWrite("clients", "create", clientPayload, entityId);
+  await checkPendingWrites();
+}
+
+export async function updateClientOffline(clientId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("clients", "update", payload, clientId);
+  await checkPendingWrites();
+}
+
+export async function deleteClientOffline(clientId: string) {
+  await addPendingWrite("clients", "delete", {}, clientId);
+  await checkPendingWrites();
+}
+
+export async function createExpenseOffline(expensePayload: Record<string, unknown>) {
+  const entityId = (expensePayload.id as string) || crypto.randomUUID();
+  await addPendingWrite("expenses", "create", expensePayload, entityId);
+  await checkPendingWrites();
+}
+
+export async function updateExpenseOffline(expenseId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("expenses", "update", payload, expenseId);
+  await checkPendingWrites();
+}
+
+export async function deleteExpenseOffline(expenseId: string) {
+  await addPendingWrite("expenses", "delete", {}, expenseId);
+  await checkPendingWrites();
+}
+
+export async function createEmployeeOffline(employeePayload: Record<string, unknown>) {
+  const entityId = (employeePayload.id as string) || crypto.randomUUID();
+  await addPendingWrite("employees", "create", employeePayload, entityId);
+  await checkPendingWrites();
+}
+
+export async function updateEmployeeOffline(employeeId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("employees", "update", payload, employeeId);
+  await checkPendingWrites();
+}
+
+export async function deleteEmployeeOffline(employeeId: string) {
+  await addPendingWrite("employees", "delete", {}, employeeId);
+  await checkPendingWrites();
+}
+
+export async function createCashRegisterOffline(registerPayload: Record<string, unknown>) {
+  const entityId = (registerPayload.id as string) || crypto.randomUUID();
+  await addPendingWrite("cash_registers", "create", registerPayload, entityId);
+  await checkPendingWrites();
+}
+
+export async function updateCashRegisterOffline(registerId: string, payload: Record<string, unknown>) {
+  await addPendingWrite("cash_registers", "update", payload, registerId);
   await checkPendingWrites();
 }
 
@@ -248,8 +383,10 @@ export async function refreshCache() {
       supabase.from("sales").select("*").is("deleted_at", null).eq("shop_id", shopId).order("created_at", { ascending: false }).limit(200),
       supabase.from("expenses").select("*").eq("shop_id", shopId).order("date", { ascending: false }).limit(200),
       supabase.from("credits").select("*").eq("shop_id", shopId).limit(200),
+      supabase.from("employees").select("*").eq("shop_id", shopId),
+      supabase.from("cash_registers").select("*").eq("shop_id", shopId).order("opened_at", { ascending: false }).limit(100),
     ]);
-    const [prodRes, clientRes, salesRes, expensesRes, creditsRes] = allResults.map((r) => r.status === "fulfilled" ? r.value : { data: null, error: r.reason });
+    const [prodRes, clientRes, salesRes, expensesRes, creditsRes, empRes, regRes] = allResults.map((r) => r.status === "fulfilled" ? r.value : { data: null, error: r.reason });
 
     const now = new Date().toISOString();
 
@@ -267,6 +404,12 @@ export async function refreshCache() {
     }
     if (creditsRes.data) {
       await cacheCredits(creditsRes.data.map((c) => ({ ...c, updatedAt: now })));
+    }
+    if (empRes.data) {
+      await cacheEmployees(empRes.data.map((e) => ({ ...e, updatedAt: now })));
+    }
+    if (regRes.data) {
+      await cacheCashRegisters(regRes.data.map((r) => ({ ...r, updatedAt: now })));
     }
   } catch (e) {
     console.error("refreshCache error:", e);
