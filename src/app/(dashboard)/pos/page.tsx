@@ -127,11 +127,23 @@ export default function POSPage() {
 
   useEffect(() => {
     if (!vendorId) return;
-    getShopId().then(shopId => {
-      supabase.from("cash_registers").select("*").eq("shop_id", shopId).eq("user_id", vendorId).eq("status", "open").single().then(({ data }) => {
-        if (data) { setRegisterOpen(true); setRegisterId(data.id); setRegisterData(data); }
-      });
-    });
+    (async () => {
+      const shopId = await getShopId();
+      if (!shopId) return;
+      const { data, error } = await supabase.from("cash_registers").select("*").eq("shop_id", shopId).eq("user_id", vendorId).eq("status", "open").single();
+      if (data) {
+        setRegisterOpen(true);
+        setRegisterId(data.id);
+        setRegisterData(data);
+        localStorage.setItem("offline_register_id", data.id);
+      } else if (error) {
+        const cachedId = localStorage.getItem("offline_register_id");
+        if (cachedId) {
+          setRegisterOpen(true);
+          setRegisterId(cachedId);
+        }
+      }
+    })();
   }, [vendorId, supabase]);
 
   const refreshRegister = useCallback(async () => {
@@ -217,7 +229,11 @@ export default function POSPage() {
       setError(regErr.message);
       return;
     }
-    if (data) { setRegisterOpen(true); setRegisterId(data.id); }
+    if (data) {
+      setRegisterOpen(true);
+      setRegisterId(data.id);
+      localStorage.setItem("offline_register_id", data.id);
+    }
   };
 
   const handleCloseRegister = async () => {
@@ -237,6 +253,7 @@ export default function POSPage() {
     setRegisterOpen(false);
     setRegisterId(null);
     setRegisterData(null);
+    localStorage.removeItem("offline_register_id");
     setCloseDialog(false);
     setPinInput("");
     setPinError(false);
