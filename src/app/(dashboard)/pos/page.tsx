@@ -89,7 +89,7 @@ export default function POSPage() {
   const [pinError, setPinError] = useState(false);
   const [userId, setUserId] = useState("");
   const [montantVerse, setMontantVerse] = useState(0);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useState(!isOnlineSync());
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -451,6 +451,7 @@ export default function POSPage() {
           }
         }
       } catch {}
+      console.error("POS checkout error:", err);
       setError(err instanceof Error ? err.message : "Erreur lors de la validation");
     } finally {
       setLoading(false);
