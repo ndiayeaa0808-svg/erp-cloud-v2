@@ -161,6 +161,8 @@ export async function tryRetryPendingWrite(id: number) {
     const shopId = await getShopId();
     const payload = { ...write.payload };
     if (!payload.shop_id && shopId) payload.shop_id = shopId;
+    delete payload.synced_from_offline;
+    delete payload.updatedAt;
 
     if (write.table === "sales" && write.action === "create") {
       const { error } = await supabase.from("sales").insert(payload);
@@ -189,8 +191,8 @@ export async function tryRetryPendingWrite(id: number) {
 }
 
 export function startSyncListener() {
-  const onOnline = () => {
-    processSyncQueue();
+  const onOnline = async () => {
+    await processSyncQueue();
     refreshCache();
   };
   window.addEventListener("online", onOnline);
