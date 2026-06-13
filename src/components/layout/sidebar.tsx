@@ -59,32 +59,34 @@ export function Sidebar() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      let permsData: { role?: string; perms?: Record<string, boolean> } | null = null;
-      try {
-        const { data } = await supabase.from("users").select("role, perms").eq("id", user.id).single();
-        permsData = data;
-      } catch {}
-      if (permsData) {
-        if (permsData.role === "admin") {
-          const all: Record<string, boolean> = {};
-          navItems.forEach((item) => { if (item.perm) all[item.perm] = true; });
-          setUserPerms(all);
-        } else {
-          setUserPerms(permsData.perms || {});
+      if (user) {
+        let permsData: { role?: string; perms?: Record<string, boolean> } | null = null;
+        try {
+          const { data } = await supabase.from("users").select("role, perms").eq("id", user.id).single();
+          permsData = data;
+        } catch {}
+        if (permsData) {
+          if (permsData.role === "admin") {
+            const all: Record<string, boolean> = {};
+            navItems.forEach((item) => { if (item.perm) all[item.perm] = true; });
+            setUserPerms(all);
+          } else {
+            setUserPerms(permsData.perms || {});
+          }
+          localStorage.setItem("user_perms", JSON.stringify(permsData.perms || {}));
+          localStorage.setItem("user_role", permsData.role || "");
+          return;
         }
-        localStorage.setItem("user_perms", JSON.stringify(permsData.perms || {}));
-        localStorage.setItem("user_role", permsData.role || "");
-      } else {
-        const cachedRole = localStorage.getItem("user_role");
-        const cachedPerms = localStorage.getItem("user_perms");
-        if (cachedRole === "admin") {
-          const all: Record<string, boolean> = {};
-          navItems.forEach((item) => { if (item.perm) all[item.perm] = true; });
-          setUserPerms(all);
-        } else if (cachedPerms) {
-          try { setUserPerms(JSON.parse(cachedPerms)); } catch {}
-        }
+      }
+      // Fallback: lire depuis le cache localStorage (hors-ligne)
+      const cachedRole = localStorage.getItem("user_role");
+      const cachedPerms = localStorage.getItem("user_perms");
+      if (cachedRole === "admin") {
+        const all: Record<string, boolean> = {};
+        navItems.forEach((item) => { if (item.perm) all[item.perm] = true; });
+        setUserPerms(all);
+      } else if (cachedPerms) {
+        try { setUserPerms(JSON.parse(cachedPerms)); } catch {}
       }
     })();
   }, [supabase]);
