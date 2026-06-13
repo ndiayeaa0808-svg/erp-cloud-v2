@@ -8,7 +8,7 @@ export function RegisterSW() {
 
     const register = async () => {
       try {
-        const registration = await navigator.serviceWorker.register("/sw");
+        const registration = await navigator.serviceWorker.register("/api/sw");
         console.log("SW enregistré");
 
         if ("sync" in registration) {
