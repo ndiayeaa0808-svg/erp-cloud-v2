@@ -51,15 +51,25 @@ export default function SettingsPage() {
 
   const load = useCallback(async () => {
     const shopId = await getShopId();
-    if (!shopId) { setLoading(false); return; }
-    if (!isOnlineSync()) {
+    if (!shopId) {
       const cached = localStorage.getItem("cached_shop");
-      if (cached) { setShop(JSON.parse(cached) as Shop); setLoading(false); return; }
+      if (cached) { setShop(JSON.parse(cached) as Shop); }
       setLoading(false);
       return;
     }
-    const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
-    if (data) { setShop(data as Shop); localStorage.setItem("cached_shop", JSON.stringify(data)); }
+    if (!isOnlineSync()) {
+      const cached = localStorage.getItem("cached_shop");
+      if (cached) { setShop(JSON.parse(cached) as Shop); }
+      setLoading(false);
+      return;
+    }
+    try {
+      const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
+      if (data) { setShop(data as Shop); localStorage.setItem("cached_shop", JSON.stringify(data)); }
+    } catch {
+      const cached = localStorage.getItem("cached_shop");
+      if (cached) { setShop(JSON.parse(cached) as Shop); }
+    }
     setLoading(false);
   }, [supabase]);
 
