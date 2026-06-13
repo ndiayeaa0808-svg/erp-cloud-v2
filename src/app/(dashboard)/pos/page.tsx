@@ -89,11 +89,12 @@ export default function POSPage() {
   const [pinError, setPinError] = useState(false);
   const [userId, setUserId] = useState("");
   const [montantVerse, setMontantVerse] = useState(0);
-  const [isOffline, setIsOffline] = useState(!isOnlineSync());
+  const [isOffline, setIsOffline] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
+    setIsOffline(!isOnlineSync());
     const on = () => setIsOffline(false);
     const off = () => setIsOffline(true);
     window.addEventListener("online", on);

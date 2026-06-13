@@ -25,7 +25,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SyncStatus>("idle");
   const [pendingCount, setPendingCount] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
 
   useEffect(() => {
     const on = () => setIsOnline(true);

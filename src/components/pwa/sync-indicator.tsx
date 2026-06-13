@@ -1,10 +1,14 @@
 "use client";
 
 import { useSync } from "@/lib/sync/sync-context";
+import { useState, useEffect } from "react";
 import { RefreshCw, CloudOff, Cloud, Clock, AlertTriangle } from "lucide-react";
 
 export function SyncIndicator() {
   const { status, pendingCount, lastSyncTime, isOnline } = useSync();
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
+  if (!hydrated) return null;
 
   if (!isOnline) {
     return (
