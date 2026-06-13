@@ -261,5 +261,7 @@ export async function refreshCache() {
     if (creditsRes.data) {
       await cacheCredits(creditsRes.data.map((c) => ({ ...c, updatedAt: now })));
     }
-  } catch {}
+  } catch (e) {
+    console.error("refreshCache error:", e);
+  }
 }

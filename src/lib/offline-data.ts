@@ -14,11 +14,19 @@ async function loadWithCache<T>(
   readCacheFn: () => Promise<T[]>,
 ): Promise<T[]> {
   if (isOnlineSync()) {
-    const res = await fetchFn();
-    if (res.data && res.data.length > 0) {
-      await cacheFn(res.data);
+    try {
+      const res = await fetchFn();
+      if (res.error) {
+        console.error(`loadWithCache(${table}) fetch error:`, res.error);
+      }
+      if (res.data && res.data.length > 0) {
+        await cacheFn(res.data);
+      }
+      return res.data || [];
+    } catch (e) {
+      console.error(`loadWithCache(${table}) exception:`, e);
+      return [];
     }
-    return res.data || [];
   }
   return readCacheFn();
 }
