@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       if (error.message.includes("already exists") || error.message.includes("already been registered")) {
         // Récupérer l'ID existant
         const { data: existing } = await adminClient.auth.admin.listUsers();
-        const found = existing?.users?.find(u => u.email === email);
+        const found = existing?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
         if (!found) {
           return NextResponse.json({ error: "Utilisateur déjà existant mais introuvable" }, { status: 409 });
         }
