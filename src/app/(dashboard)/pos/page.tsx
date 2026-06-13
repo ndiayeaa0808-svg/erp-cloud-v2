@@ -290,11 +290,14 @@ export default function POSPage() {
           setClient(""); setClientPhone(""); setDiscountFcfa(0); setPaymentType("complet"); setMontantVerse(0);
           setSuccess(true);
           setTimeout(() => setSuccess(false), 3000);
+        } else {
+          setError(result.error || "Erreur lors de la validation hors-ligne");
         }
         setLoading(false);
         return;
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Erreur lors de la validation hors-ligne");
+        console.error("Offline checkout error:", e);
+        setError("Erreur hors-ligne: " + (e instanceof Error ? e.message : "inconnue"));
         setLoading(false);
         return;
       }
@@ -424,6 +427,36 @@ export default function POSPage() {
         setTimeout(() => setSuccess(false), 3000);
       }
     } catch (err: unknown) {
+      // Fallback: essayer le mode hors-ligne si la connexion a été perdue
+      try {
+        const online = await checkIsOnline();
+        if (!online) {
+          const { checkoutOffline } = await import("@/lib/sync/pos-offline");
+          const fallbackResult = await checkoutOffline({
+            cart: cart as CartItem[],
+            client: client || "",
+            clientPhone: clientPhone || "",
+            payment,
+            paymentType,
+            total: saleTotal,
+            paidAmount,
+            profit: saleProfit,
+            discount: discountFcfa,
+            vendor,
+            vendorId,
+            shopId,
+          });
+          if (fallbackResult.success) {
+            setLastSale({ invoice: fallbackResult.invoiceNumber!, client, clientPhone, total, paidAmount, remaining, payment, paymentType, items: [...cart], discount: discountFcfa });
+            setCart([]);
+            setClient(""); setClientPhone(""); setDiscountFcfa(0); setPaymentType("complet"); setMontantVerse(0);
+            setSuccess(true);
+            setTimeout(() => setSuccess(false), 3000);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
       setError(err instanceof Error ? err.message : "Erreur lors de la validation");
     } finally {
       setLoading(false);

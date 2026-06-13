@@ -1,4 +1,4 @@
-const CACHE = "erp-cache-v1";
+const CACHE = "erp-cache-v2";
 const STATIC_ASSETS = [
   "/",
   "/login",
@@ -14,13 +14,18 @@ const STATIC_ASSETS = [
   "/reports",
   "/employees",
   "/users",
-  "/offline",
   "/manifest.json",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE).then((cache) =>
+      Promise.allSettled(
+        STATIC_ASSETS.map((url) =>
+          cache.add(url).catch(() => {})
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
@@ -38,10 +43,6 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (url.origin !== self.location.origin && !url.href.includes("supabase")) {
-    return;
-  }
-
   if (request.method !== "GET") return;
 
   if (url.pathname.startsWith("/api/")) {
@@ -54,11 +55,6 @@ self.addEventListener("fetch", (event) => {
     url.pathname.match(/\.(js|css|woff2|png|jpg|svg|ico)$/)
   ) {
     event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  if (url.pathname === "/" || STATIC_ASSETS.includes(url.pathname)) {
-    event.respondWith(networkFirst(request));
     return;
   }
 
@@ -75,7 +71,12 @@ async function networkFirst(request) {
     return response;
   } catch {
     const cached = await caches.match(request);
-    return cached || new Response("Hors-ligne", { status: 503 });
+    if (cached) return cached;
+    if (request.mode === "navigate") {
+      const root = await caches.match("/");
+      if (root) return root;
+    }
+    return new Response("Hors-ligne", { status: 503 });
   }
 }
 

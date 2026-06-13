@@ -46,7 +46,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       if (t !== undefined) setLastSyncTime(t);
     });
     checkPendingWrites();
-    refreshCache();
+    if (navigator.onLine) refreshCache();
     const cleanup = startSyncListener();
     return () => { unsub(); cleanup(); };
   }, []);
