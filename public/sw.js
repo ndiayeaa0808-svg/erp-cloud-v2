@@ -1,32 +1,6 @@
-const CACHE = "erp-cache-v2";
-const STATIC_ASSETS = [
-  "/",
-  "/login",
-  "/pos",
-  "/products",
-  "/sales",
-  "/clients",
-  "/credits",
-  "/expenses",
-  "/invoices",
-  "/settings",
-  "/cash-register",
-  "/reports",
-  "/employees",
-  "/users",
-  "/manifest.json",
-];
+const CACHE = "erp-cache-v3";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) =>
-      Promise.allSettled(
-        STATIC_ASSETS.map((url) =>
-          cache.add(url).catch(() => {})
-        )
-      )
-    )
-  );
   self.skipWaiting();
 });
 
@@ -41,27 +15,44 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
   if (request.method !== "GET") return;
-
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  if (
-    url.pathname.startsWith("/_next/") ||
-    url.pathname.match(/\.(js|css|woff2|png|jpg|svg|ico)$/)
-  ) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  event.respondWith(networkFirst(request));
+  event.respondWith(handleFetch(request));
 });
 
-async function networkFirst(request) {
+async function handleFetch(request) {
+  const url = new URL(request.url);
+
+  // API calls: network only (no cache)
+  if (url.pathname.startsWith("/api/")) {
+    try {
+      return await fetch(request);
+    } catch {
+      return new Response(JSON.stringify({ error: "Hors-ligne" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Navigations: network first, cache fallback
+  if (request.mode === "navigate") {
+    try {
+      const response = await fetch(request);
+      if (response.ok) {
+        const cache = await caches.open(CACHE);
+        cache.put(request, response.clone());
+      }
+      return response;
+    } catch {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      const root = await caches.match("/");
+      if (root) return root;
+      return new Response("Hors-ligne", { status: 503 });
+    }
+  }
+
+  // JS/CSS/images: network first (always latest when online), cache fallback when offline
   try {
     const response = await fetch(request);
     if (response.ok) {
@@ -72,25 +63,6 @@ async function networkFirst(request) {
   } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
-    if (request.mode === "navigate") {
-      const root = await caches.match("/");
-      if (root) return root;
-    }
-    return new Response("Hors-ligne", { status: 503 });
-  }
-}
-
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
     return new Response("Hors-ligne", { status: 503 });
   }
 }
