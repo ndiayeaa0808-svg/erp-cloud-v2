@@ -236,13 +236,14 @@ export async function refreshCache() {
     const shopId = await getShopId();
     if (!shopId) return;
 
-    const [prodRes, clientRes, salesRes, expensesRes, creditsRes] = await Promise.all([
+    const allResults = await Promise.allSettled([
       supabase.from("products").select("id,name,retail,wholesale,cost,stock,threshold,unit,cat,photo,ref,barcode,supplier,desc").is("deleted_at", null).eq("shop_id", shopId),
       supabase.from("clients").select("id,name,phone,email,address").eq("shop_id", shopId).limit(500),
       supabase.from("sales").select("*").is("deleted_at", null).eq("shop_id", shopId).order("created_at", { ascending: false }).limit(200),
       supabase.from("expenses").select("*").eq("shop_id", shopId).order("date", { ascending: false }).limit(200),
       supabase.from("credits").select("*").eq("shop_id", shopId).limit(200),
     ]);
+    const [prodRes, clientRes, salesRes, expensesRes, creditsRes] = allResults.map((r) => r.status === "fulfilled" ? r.value : { data: null, error: r.reason });
 
     const now = new Date().toISOString();
 
