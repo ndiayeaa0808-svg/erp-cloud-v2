@@ -28,10 +28,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    setIsOnline(isOnlineSync());
-    if (isOnlineSync()) return;
     const on = () => setIsOnline(true);
     const off = () => setIsOnline(false);
+    setIsOnline(isOnlineSync());
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
     return () => {

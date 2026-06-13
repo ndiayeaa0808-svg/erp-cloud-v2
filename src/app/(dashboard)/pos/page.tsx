@@ -94,8 +94,6 @@ export default function POSPage() {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    setIsOffline(!isOnlineSync());
-    if (!isOnlineSync()) return;
     const on = () => setIsOffline(false);
     const off = () => setIsOffline(true);
     window.addEventListener("online", on);
