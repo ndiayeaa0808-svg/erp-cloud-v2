@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getShopId, getShopInfo, getCurrentUser, logAudit, requirePinAction } from "@/lib/security";
 import { isOnline as checkIsOnline, isOnlineSync } from "@/lib/is-online";
 import { loadProductsOffline } from "@/lib/offline-data";
+import { checkoutOffline } from "@/lib/sync/pos-offline";
 import {
   Search,
   Plus,
@@ -279,7 +280,6 @@ export default function POSPage() {
     // Mode hors-ligne : utiliser directement le workflow offline
     if (isOffline) {
       try {
-        const { checkoutOffline } = await import("@/lib/sync/pos-offline");
         const result = await checkoutOffline({
           cart: cart as CartItem[],
           client: client || "",
@@ -441,7 +441,6 @@ export default function POSPage() {
       try {
         const online = await checkIsOnline();
         if (!online) {
-          const { checkoutOffline } = await import("@/lib/sync/pos-offline");
           const fallbackResult = await checkoutOffline({
             cart: cart as CartItem[],
             client: client || "",
