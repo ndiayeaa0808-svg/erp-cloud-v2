@@ -23,6 +23,10 @@ export function RegisterSW() {
             window.location.reload();
           }
         });
+
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          window.location.reload();
+        });
       } catch {}
     };
 

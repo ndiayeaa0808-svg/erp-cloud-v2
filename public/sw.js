@@ -1,4 +1,4 @@
-const CACHE = "erp-cache-v4";
+const CACHE = "erp-cache-v5";
 const STATIC_ASSETS = [
   "/",
   "/login",
@@ -63,7 +63,7 @@ async function handleFetch(request) {
   // Navigations: network first, cache fallback, root fallback
   if (request.mode === "navigate") {
     try {
-      const response = await fetch(request);
+      const response = await fetch(request, { cache: "no-store" });
       if (response.ok) {
         const cache = await caches.open(CACHE);
         cache.put(request, response.clone());
@@ -83,7 +83,7 @@ async function handleFetch(request) {
 
   // JS/CSS/images: network first, cache fallback
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: "no-store" });
     if (response.ok) {
       const cache = await caches.open(CACHE);
       cache.put(request, response.clone());
