@@ -14,9 +14,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
-import {
-  Key, Users, TrendingUp, ShieldAlert, CheckCircle2, Copy, Search,
-} from "lucide-react";
+import { Key, Users, TrendingUp, ShieldAlert, CheckCircle2, Copy, Search } from "lucide-react";
+import type { License, ShopWithLicense } from "@/types";
 
 const PLANS = [
   { value: "trial", label: "Essai 7 jours" },
@@ -30,8 +29,8 @@ export default function AdminPage() {
   const supabase = createClient();
   const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState("licences");
-  const [licenses, setLicenses] = useState<any[]>([]);
-  const [shops, setShops] = useState<any[]>([]);
+  const [licenses, setLicenses] = useState<License[]>([]);
+  const [shops, setShops] = useState<ShopWithLicense[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -41,11 +40,11 @@ export default function AdminPage() {
   const [genLoading, setGenLoading] = useState(false);
 
   const planLabel = (p: string) => PLANS.find(x => x.value === p)?.label || p;
-  const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString("fr-FR") : "-";
+  const formatDate = (d: string | null | undefined) => d ? new Date(d).toLocaleDateString("fr-FR") : "-";
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email === "ndiayeaO8@gmail.com") setIsAdmin(true);
+      if (user?.user_metadata?.role === "admin") setIsAdmin(true);
       else setLoading(false);
     });
   }, [supabase]);
@@ -93,8 +92,8 @@ export default function AdminPage() {
 
   const stats = {
     total: shops.length,
-    active: shops.filter((s: any) => s.license_status === "active" || s.license_status === "trial").length,
-    expired: shops.filter((s: any) => s.license_status === "expired" || s.license_status === "cancelled").length,
+    active: shops.filter((s) => s.license_status === "active" || s.license_status === "trial").length,
+    expired: shops.filter((s) => s.license_status === "expired" || s.license_status === "cancelled").length,
   };
 
   if (!isAdmin) return (
@@ -121,7 +120,7 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="w-40">
                   <Label className="text-xs">Plan</Label>
-                  <Select value={genPlan} onValueChange={(v: any) => setGenPlan(v || "monthly")}>
+                  <Select value={genPlan} onValueChange={(v) => setGenPlan(v || "monthly")}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {PLANS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
@@ -166,7 +165,7 @@ export default function AdminPage() {
               <TableBody>
                 {licenses.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucune licence</TableCell></TableRow>
-                ) : licenses.map((l: any) => (
+                ) : licenses.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell className="font-mono text-xs">{l.code}</TableCell>
                     <TableCell>{planLabel(l.plan)}</TableCell>
@@ -206,8 +205,8 @@ export default function AdminPage() {
               </TableHeader>
               <TableBody>
                 {shops
-                  .filter((s: any) => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || s.phone?.includes(search))
-                  .map((s: any) => (
+                  .filter((s) => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || s.phone?.includes(search))
+                  .map((s) => (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.name}</TableCell>
                     <TableCell className="text-xs">{s.phone || s.email || "-"}</TableCell>
@@ -242,7 +241,7 @@ export default function AdminPage() {
             <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold">{stats.total}</p><p className="text-xs text-muted-foreground">Total boutiques</p></CardContent></Card>
             <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-emerald-500">{stats.active}</p><p className="text-xs text-muted-foreground">Actives</p></CardContent></Card>
             <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-red-500">{stats.expired}</p><p className="text-xs text-muted-foreground">Bloquées</p></CardContent></Card>
-            <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold">{licenses.filter((l: any) => l.status === "active").length}</p><p className="text-xs text-muted-foreground">Licences actives</p></CardContent></Card>
+            <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold">{licenses.filter((l) => l.status === "active").length}</p><p className="text-xs text-muted-foreground">Licences actives</p></CardContent></Card>
           </div>
         </TabsContent>
       </Tabs>

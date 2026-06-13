@@ -26,7 +26,7 @@ import { getShopId, getCurrentUser, requirePinAction, logAudit } from "@/lib/sec
 import {
   Plus, Search, ShoppingCart, Pencil, Trash2, Truck, Lock, X,
 } from "lucide-react";
-import type { PurchaseOrder, Supplier, Product } from "@/types";
+import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product } from "@/types";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: { label: "En attente", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" },
@@ -43,7 +43,7 @@ export default function PurchaseOrdersPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [edit, setEdit] = useState<Partial<PurchaseOrder> & { items?: any[] }>({});
+  const [edit, setEdit] = useState<Partial<PurchaseOrder> & { items?: PurchaseOrderItem[] }>({});
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [pinInput, setPinInput] = useState("");

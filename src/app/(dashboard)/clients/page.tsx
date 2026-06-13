@@ -36,6 +36,7 @@ import { loadClientsOffline } from "@/lib/offline-data";
 import { isOnlineSync } from "@/lib/is-online";
 import { createClientOffline, updateClientOffline, deleteClientOffline } from "@/lib/sync/sync";
 import { getCachedClients, cacheClients, updateCachedClient, deleteCachedClient } from "@/lib/sync/db";
+import type { CachedClient } from "@/lib/sync/db";
 import {
   Plus,
   Search,
@@ -187,12 +188,12 @@ export default function ClientsPage() {
         const now = new Date().toISOString();
         if (edit.id) {
           await updateClientOffline(edit.id, edit);
-          await updateCachedClient(edit.id, edit as any);
+          await updateCachedClient(edit.id, edit as Partial<Client>);
         } else {
           const newId = crypto.randomUUID();
           await createClientOffline({ ...edit, id: newId, shop_id: shopId });
           const cached = await getCachedClients();
-          await cacheClients([...cached, { ...edit, id: newId, shop_id: shopId, updatedAt: now } as any]);
+          await cacheClients([...cached, { ...edit, id: newId, shop_id: shopId, updatedAt: now } as CachedClient]);
         }
         setOpen(false);
         setEdit({});

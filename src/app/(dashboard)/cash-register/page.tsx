@@ -48,6 +48,7 @@ import { isOnlineSync } from "@/lib/is-online";
 import { loadCashRegistersOffline } from "@/lib/offline-data";
 import { createCashRegisterOffline, updateCashRegisterOffline } from "@/lib/sync/sync";
 import { getCachedCashRegisters, cacheCashRegisters, updateCachedCashRegister } from "@/lib/sync/db";
+import type { CachedCashRegister } from "@/lib/sync/db";
 
 export default function CashRegisterPage() {
   useRequirePermission("cash_register");
@@ -121,7 +122,7 @@ export default function CashRegisterPage() {
       };
       await createCashRegisterOffline(regData);
       const cached = await getCachedCashRegisters();
-      await cacheCashRegisters([{ ...regData, updatedAt: now } as any, ...cached]);
+      await cacheCashRegisters([{ ...regData, updatedAt: now } as CachedCashRegister, ...cached]);
       setOpenDialog(false);
       setInitialAmount(0);
       setNote("");
@@ -163,7 +164,7 @@ export default function CashRegisterPage() {
         closed_at: now,
         actual_amount: actualAmount,
         updatedAt: now,
-      } as any);
+      });
       setCloseDialog(false);
       setActualAmount(0);
       load();

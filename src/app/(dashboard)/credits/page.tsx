@@ -45,6 +45,7 @@ import { isOnlineSync } from "@/lib/is-online";
 import { loadCreditsOffline } from "@/lib/offline-data";
 import { createCreditOffline, updateCreditOffline, deleteCreditOffline } from "@/lib/sync/sync";
 import { getCachedCredits, cacheCredits, updateCachedCredit, deleteCachedCredit, getCachedProducts } from "@/lib/sync/db";
+import type { CachedCredit } from "@/lib/sync/db";
 import {
   Plus,
   Search,
@@ -58,7 +59,7 @@ import {
   Eye,
   Lock,
 } from "lucide-react";
-import type { Credit, Product } from "@/types";
+import type { Credit, CreditPayment, Product } from "@/types";
 
 export default function CreditsPage() {
   useRequirePermission("credits");
@@ -178,11 +179,11 @@ export default function CreditsPage() {
       };
       if (edit.id) {
         await updateCreditOffline(edit.id, creditPayload);
-        await updateCachedCredit(edit.id, { ...creditPayload, updatedAt: now } as any);
+        await updateCachedCredit(edit.id, { ...creditPayload, updatedAt: now });
       } else {
         await createCreditOffline(creditPayload);
         const cached = await getCachedCredits();
-        await cacheCredits([...cached, { ...creditPayload, updatedAt: now } as any]);
+        await cacheCredits([...cached, { ...creditPayload, updatedAt: now } as unknown as CachedCredit]);
       }
       setOpen(false);
       setSaveError("");
@@ -280,7 +281,7 @@ export default function CreditsPage() {
     const newStatus = newPaid >= (credit.total || 0) ? "paid" : "partial";
     if (!isOnlineSync()) {
       await updateCreditOffline(payInput.id, { paid: newPaid, status: newStatus });
-      await updateCachedCredit(payInput.id, { paid: newPaid, status: newStatus, updatedAt: new Date().toISOString() } as any);
+      await updateCachedCredit(payInput.id, { paid: newPaid, status: newStatus, updatedAt: new Date().toISOString() });
       setPayInput({ id: "", amount: 0, method: "especes", open: false, note: "" });
       load();
       return;
@@ -302,16 +303,16 @@ export default function CreditsPage() {
     } catch {
       await supabase.from("credits").update({ paid: newPaid, status: newStatus }).eq("id", payInput.id).eq("shop_id", shopId);
     }
-    const saleItems = Array.isArray(credit.items) ? await Promise.all(credit.items.map(async (item: any) => {
+    const saleItems = Array.isArray(credit.items) ? await Promise.all(credit.items.map(async (item: { product_id: string; product_name: string; qty: number; price: number; total: number }) => {
       const { data: prod } = await supabase.from("products").select("cost").eq("id", item.product_id).single();
       return { ...item, cost: prod?.cost || 0 };
     })) : [];
-    const totalItemCost = saleItems.reduce((s: number, i: any) => s + (i.cost * i.qty), 0);
+    const totalItemCost = saleItems.reduce((s: number, i: { product_id: string; product_name: string; qty: number; price: number; total: number; cost: number }) => s + (i.cost * i.qty), 0);
     const totalProfit = (credit.total || 0) - totalItemCost;
     const proportionalProfit = (credit.total || 0) > 0 ? Math.round((paymentAmount / (credit.total || 0)) * totalProfit) : 0;
     // Update the original sale (if linked) to reflect cumulative payment
-    const linkedSaleId = (credit as any).sale_id || null;
-    let linkedSale: any = null;
+    const linkedSaleId = (credit as Credit & { sale_id?: string }).sale_id || null;
+    let linkedSale: { id: string; total?: number; profit?: number; invoice_number?: string } | null = null;
     if (linkedSaleId) {
       const { data } = await supabase.from("sales").select("id,total,profit,invoice_number").eq("id", linkedSaleId).single();
       linkedSale = data;
@@ -643,7 +644,7 @@ export default function CreditsPage() {
                 <div>
                   <span className="text-muted-foreground">Produits</span>
                   <div className="border rounded-lg divide-y mt-1 text-xs">
-                    {detailCredit.items.map((item: any, i: number) => (
+                    {detailCredit.items.map((item: { product_id: string; product_name: string; qty: number; price: number; total: number }, i: number) => (
                       <div key={i} className="flex justify-between px-2 py-1">
                         <span>{item.product_name} x{item.qty}</span>
                         <span>{item.total?.toLocaleString()} FCFA</span>
@@ -656,7 +657,7 @@ export default function CreditsPage() {
                 <span className="text-muted-foreground">Paiements</span>
                 {Array.isArray(detailCredit.payments) && detailCredit.payments.length > 0 ? (
                   <div className="border rounded-lg divide-y mt-1 text-xs">
-                    {detailCredit.payments.map((p: any, i: number) => (
+                    {detailCredit.payments.map((p: CreditPayment, i: number) => (
                       <div key={i} className="flex justify-between items-center px-2 py-1">
                         <div>
                           <span className="font-medium">{p.amount?.toLocaleString()} FCFA</span>

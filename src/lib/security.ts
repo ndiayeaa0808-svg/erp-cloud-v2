@@ -29,7 +29,9 @@ export async function verifyPin(userId: string, pin: string): Promise<boolean> {
         }
         return valid;
       }
-    } catch {}
+    } catch {
+    // Offline: fall back to cached PIN
+    }
   }
   // Fallback offline : vérifier contre le PIN caché
   const cached = typeof localStorage !== "undefined" ? localStorage.getItem(PIN_CACHE_KEY) : null;

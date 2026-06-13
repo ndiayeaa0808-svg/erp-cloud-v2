@@ -44,6 +44,7 @@ import { isOnlineSync } from "@/lib/is-online";
 import { loadExpensesOffline } from "@/lib/offline-data";
 import { createExpenseOffline, updateExpenseOffline, deleteExpenseOffline } from "@/lib/sync/sync";
 import { getCachedExpenses, cacheExpenses, updateCachedExpense, deleteCachedExpense } from "@/lib/sync/db";
+import type { CachedExpense } from "@/lib/sync/db";
 import { Plus, Search, Pencil, Trash2, Receipt, ShieldAlert, Download } from "lucide-react";
 import { exportCSV } from "@/lib/export-csv";
 import type { Expense } from "@/types";
@@ -87,11 +88,11 @@ export default function ExpensesPage() {
         const payload = { ...edit, id: edit.id || crypto.randomUUID(), shop_id: shopId, date: edit.date || now.split("T")[0] };
         if (edit.id) {
           await updateExpenseOffline(edit.id, payload);
-          await updateCachedExpense(edit.id, payload as any);
+          await updateCachedExpense(edit.id, payload);
         } else {
           await createExpenseOffline(payload);
           const cached = await getCachedExpenses();
-          await cacheExpenses([...cached, { ...payload, updatedAt: now } as any]);
+          await cacheExpenses([...cached, { ...payload, updatedAt: now } as CachedExpense]);
         }
         setOpen(false);
         setEdit({});

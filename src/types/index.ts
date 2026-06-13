@@ -337,14 +337,30 @@ export interface PurchaseOrder {
 }
 
 export interface PurchaseOrderItem {
-  id: string;
-  order_id: string;
+  id?: string;
+  order_id?: string;
   product_id?: string;
   product_name: string;
   qty: number;
   received_qty?: number;
   unit_cost: number;
   total: number;
+}
+
+export interface License {
+  id: string;
+  code: string;
+  plan: string;
+  status: string;
+  used_by_email?: string;
+  notes?: string;
+  created_at?: string;
+  expires_at?: string;
+}
+
+export interface ShopWithLicense extends Shop {
+  license_status?: string;
+  licenses?: License;
 }
 
 export interface TableMeta<T> {

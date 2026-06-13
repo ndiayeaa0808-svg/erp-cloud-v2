@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, Eye, EyeOff, LogIn, UserPlus, ExternalLink, CheckCircle2, Building2, WifiOff, Key } from "lucide-react";
+import { Info, Eye, EyeOff, LogIn, ExternalLink, CheckCircle2, Building2, WifiOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { hasValidConfig, getSupabaseConfig, storeConfig } from "@/lib/supabase/config";
 import { isOnlineSync } from "@/lib/is-online";
 import { cacheSession, hasValidCachedSession } from "@/lib/offline-auth";
 import { refreshCache } from "@/lib/sync/sync";
+import { ADMIN_PERMS } from "@/lib/constants";
 
 export default function LoginPage() {
   const [configured, setConfigured] = useState(false);
@@ -26,7 +27,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [adminEmail, setAdminEmail] = useState("ndiayeaO8@gmail.com");
+  const [adminEmail, setAdminEmail] = useState("");
+
+  const setAdminLocalStorage = () => {
+    localStorage.setItem("shop_id", "admin");
+    localStorage.setItem("user_role", "admin");
+    localStorage.setItem("user_perms", JSON.stringify(ADMIN_PERMS));
+  };
   const [licenseCode, setLicenseCode] = useState("");
   const [licenseValid, setLicenseValid] = useState(false);
   const [licensePlan, setLicensePlan] = useState("");
@@ -171,13 +178,7 @@ export default function LoginPage() {
             }
             const retry = await supabase.auth.signInWithPassword({ email: adminEmail, password });
             if (retry.error) { setError(retry.error.message); return; }
-            localStorage.setItem("shop_id", "admin");
-            localStorage.setItem("user_role", "admin");
-            localStorage.setItem("user_perms", JSON.stringify({
-              dashboard: true, pos: true, products: true, sales: true,
-              credits: true, clients: true, expenses: true, reports: true,
-              cash_register: true, invoices: true, users: true, settings: true,
-            }));
+            setAdminLocalStorage();
             window.location.href = "/";
             return;
           } catch {
@@ -188,13 +189,7 @@ export default function LoginPage() {
         setError(signInError.message);
         return;
       }
-      localStorage.setItem("shop_id", "admin");
-      localStorage.setItem("user_role", "admin");
-      localStorage.setItem("user_perms", JSON.stringify({
-        dashboard: true, pos: true, products: true, sales: true,
-        credits: true, clients: true, expenses: true, reports: true,
-        cash_register: true, invoices: true, users: true, settings: true,
-      }));
+        setAdminLocalStorage();
       window.location.href = "/";
     } catch { setError("Erreur de connexion"); }
     setLoading(false);

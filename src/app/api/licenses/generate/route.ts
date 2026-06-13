@@ -1,5 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { getAdminClient, apiError, apiSuccess, withErrorHandler } from "@/lib/api-utils";
 
 function generateCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -23,49 +22,37 @@ function computeExpiry(plan: string): string | null {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const { plan, notes } = await request.json();
+export const POST = withErrorHandler(async (request: Request) => {
+  const { plan, notes } = await request.json();
 
-    if (!["trial", "monthly", "quarterly", "semi_annual", "lifetime"].includes(plan)) {
-      return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
-    }
-
-    const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!serviceRole || !supabaseUrl) {
-      return NextResponse.json({ error: "Configuration serveur manquante" }, { status: 500 });
-    }
-
-    const adminClient = createClient(supabaseUrl, serviceRole, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    let code: string;
-    let attempts = 0;
-    do {
-      code = generateCode();
-      const { data: existing } = await adminClient.from("licenses").select("id").eq("code", code).maybeSingle();
-      if (!existing) break;
-      attempts++;
-    } while (attempts < 10);
-
-    const expiresAt = computeExpiry(plan);
-
-    const { data: license, error } = await adminClient.from("licenses").insert({
-      code,
-      plan,
-      status: "active",
-      expires_at: expiresAt,
-      notes: notes || null,
-    }).select().single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ code, plan, expires_at: expiresAt });
-  } catch {
-    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  if (!["trial", "monthly", "quarterly", "semi_annual", "lifetime"].includes(plan)) {
+    return apiError("Plan invalide", 400);
   }
-}
+
+  const adminClient = getAdminClient();
+
+  let code: string;
+  let attempts = 0;
+  do {
+    code = generateCode();
+    const { data: existing } = await adminClient.from("licenses").select("id").eq("code", code).maybeSingle();
+    if (!existing) break;
+    attempts++;
+  } while (attempts < 10);
+
+  const expiresAt = computeExpiry(plan);
+
+  const { data: license, error } = await adminClient.from("licenses").insert({
+    code,
+    plan,
+    status: "active",
+    expires_at: expiresAt,
+    notes: notes || null,
+  }).select().single();
+
+  if (error) {
+    return apiError(error.message, 400);
+  }
+
+  return apiSuccess({ code, plan, expires_at: expiresAt });
+});

@@ -45,6 +45,7 @@ import { isOnlineSync } from "@/lib/is-online";
 import { loadSalesOffline } from "@/lib/offline-data";
 import { updateSaleOffline } from "@/lib/sync/sync";
 import { getCachedSales, cacheSales } from "@/lib/sync/db";
+import type { CachedSale } from "@/lib/sync/db";
 import {
   Search,
   Printer,
@@ -90,8 +91,8 @@ export default function InvoicesPage() {
 
     if (!isOnlineSync()) {
       const cached = await loadSalesOffline();
-      setSales(cached.filter((s: any) => !s.deleted_at) as unknown as Sale[]);
-      setDeletedSales(cached.filter((s: any) => s.deleted_at) as unknown as Sale[]);
+      setSales(cached.filter((s) => !s.deleted_at) as unknown as Sale[]);
+      setDeletedSales(cached.filter((s) => s.deleted_at) as unknown as Sale[]);
       setLoading(false);
       return;
     }
@@ -249,7 +250,7 @@ ${styles}
       await updateSaleOffline(id, { invoice_deleted_at: null });
       const cached = await getCachedSales();
       const updated = cached.map((s) => s.id === id ? { ...s, invoice_deleted_at: null, updatedAt: new Date().toISOString() } : s);
-      await cacheSales(updated as any);
+      await cacheSales(updated as CachedSale[]);
       load();
       return;
     }
@@ -266,7 +267,7 @@ ${styles}
       await updateSaleOffline(deleteTarget, { invoice_deleted_at: new Date().toISOString() });
       const cached = await getCachedSales();
       const updated = cached.map((s) => s.id === deleteTarget ? { ...s, invoice_deleted_at: new Date().toISOString(), updatedAt: new Date().toISOString() } : s);
-      await cacheSales(updated as any);
+      await cacheSales(updated as CachedSale[]);
       setDeleteTarget(null);
       setPinInput("");
       setPinError(false);

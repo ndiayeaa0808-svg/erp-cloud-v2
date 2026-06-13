@@ -46,6 +46,7 @@ import { loadProductsOffline } from "@/lib/offline-data";
 import { isOnlineSync } from "@/lib/is-online";
 import { createProductOffline, updateProductOffline, deleteProductOffline, updateStockOffline } from "@/lib/sync/sync";
 import { getCachedProducts, cacheProducts, updateCachedProduct, deleteCachedProduct } from "@/lib/sync/db";
+import type { CachedProduct } from "@/lib/sync/db";
 import {
   Plus,
   Search,
@@ -123,12 +124,12 @@ export default function ProductsPage() {
         if (edit.id) {
           const { id: _id, created_at: _ca, updated_at: _ua, ...clean } = edit;
           await updateProductOffline(edit.id, { ...clean, updatedAt: now });
-          await updateCachedProduct(edit.id, { ...clean, updatedAt: now } as any);
+          await updateCachedProduct(edit.id, { ...clean, updatedAt: now } as Partial<Product>);
         } else {
           const newId = crypto.randomUUID();
           await createProductOffline({ ...edit, id: newId, shop_id: shopId });
           const cached = await getCachedProducts();
-          await cacheProducts([...cached, { ...edit, id: newId, shop_id: shopId, updatedAt: now } as any]);
+          await cacheProducts([...cached, { ...edit, id: newId, shop_id: shopId, updatedAt: now } as CachedProduct]);
         }
         setOpen(false);
         setEdit({});
@@ -195,7 +196,7 @@ export default function ProductsPage() {
           : Math.max(0, stockAdjust.currentStock - stockAdjust.qty);
         if (!isOnlineSync()) {
           await updateStockOffline(stockAdjust.id, newStock);
-          await updateCachedProduct(stockAdjust.id, { stock: newStock } as any);
+          await updateCachedProduct(stockAdjust.id, { stock: newStock } as Partial<Product>);
           setStockAdjust(null);
           load();
           return;

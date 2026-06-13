@@ -41,10 +41,11 @@ export interface CachedClient {
 
 export interface CachedSale {
   id: string;
+  shop_id: string;
   invoice_number: string;
   date: string;
   client: string;
-  client_phone?: string;
+  client_phone?: string | null;
   total: number;
   profit: number;
   discount: number;
@@ -55,34 +56,36 @@ export interface CachedSale {
   items: unknown[];
   status: string;
   created_at: string;
+  deleted_at?: string | null;
+  invoice_deleted_at?: string | null;
   updatedAt: string;
 }
 
 export interface CachedExpense {
   id: string;
-  shop_id?: string;
+  shop_id?: string | null;
   desc: string;
-  cat?: string;
-  amount?: number;
+  cat?: string | null;
+  amount?: number | null;
   date: string;
-  note?: string;
-  receipt_photo?: string;
-  recurrence?: string;
-  workflow_status?: string;
-  created_at?: string;
-  updated_at?: string;
+  note?: string | null;
+  receipt_photo?: string | null;
+  recurrence?: string | null;
+  workflow_status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   updatedAt: string;
 }
 
 export interface CachedCredit {
   id: string;
   client: string;
-  client_phone?: string;
+  client_phone?: string | null;
   total: number;
   paid: number;
   status: string;
   date: string;
-  note?: string;
+  note?: string | null;
   vendor: string;
   sale_id?: string;
   updatedAt: string;
@@ -104,9 +107,10 @@ export interface CachedCashRegister {
   shop_id: string;
   initial_amount: number;
   current_amount: number;
+  actual_amount?: number | null;
   status: string;
   opened_at: string;
-  closed_at?: string;
+  closed_at?: string | null;
   vendor?: string;
   vendor_id?: string;
   note?: string;

@@ -40,6 +40,7 @@ import { loadSalesOffline } from "@/lib/offline-data";
 import { isOnlineSync } from "@/lib/is-online";
 import { deleteSaleOffline, updateSaleOffline, createSaleOffline } from "@/lib/sync/sync";
 import { getCachedSales, cacheSales } from "@/lib/sync/db";
+import type { CachedSale } from "@/lib/sync/db";
 import {
   Search,
   Receipt,
@@ -126,7 +127,7 @@ export default function SalesPage() {
       await deleteSaleOffline(saleId);
       const cached = await getCachedSales();
       const updated = cached.map((s) => s.id === saleId ? { ...s, deleted_at: new Date().toISOString(), updatedAt: new Date().toISOString() } : s);
-      await cacheSales(updated as any);
+      await cacheSales(updated as CachedSale[]);
       setDeleteTarget(null);
       setPinInput("");
       setPinError(false);
@@ -185,7 +186,7 @@ export default function SalesPage() {
       await updateSaleOffline(saleId, { deleted_at: null });
       const cached = await getCachedSales();
       const updated = cached.map((s) => s.id === saleId ? { ...s, deleted_at: null, updatedAt: new Date().toISOString() } : s);
-      await cacheSales(updated as any);
+      await cacheSales(updated as CachedSale[]);
       load();
       return;
     }
