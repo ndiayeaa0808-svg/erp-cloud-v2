@@ -57,6 +57,8 @@ export async function processSyncQueue() {
       const shopId = await getShopId();
       const payload = { ...write.payload };
       if (!payload.shop_id && shopId) payload.shop_id = shopId;
+      delete payload.synced_from_offline;
+      delete payload.updatedAt;
 
       if (write.table === "sales" && write.action === "create") {
         if (write.entityId) {
