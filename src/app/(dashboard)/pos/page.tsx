@@ -215,6 +215,10 @@ export default function POSPage() {
   const profit = cart.reduce((sum, c) => sum + (c.price - c.cost) * c.qty, 0) - discountAmount;
 
   const handleOpenRegister = async () => {
+    if (isOffline) {
+      setError("Impossible d'ouvrir la caisse hors-ligne. Revenez en ligne.");
+      return;
+    }
     const shopId = await getShopId();
     if (!shopId) return;
     const { data, error: regErr } = await supabase.from("cash_registers").insert({
@@ -261,7 +265,8 @@ export default function POSPage() {
   };
 
   const handleCheckout = async () => {
-    if (cart.length === 0 || !registerId) return;
+    if (cart.length === 0) return;
+    if (!registerId && !isOffline) { setError("Ouvrez la caisse d'abord"); setLoading(false); return; }
     const paidAmount = paymentType === "pret" ? 0 : (paymentType === "partiel" ? montantVerse : total);
     if (paymentType === "partiel" && (paidAmount <= 0 || paidAmount >= total)) {
       setError("Le montant versé doit être entre 0 et le total");
