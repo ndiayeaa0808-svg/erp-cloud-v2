@@ -39,6 +39,49 @@ export interface CachedClient {
   updatedAt: string;
 }
 
+export interface CachedSale {
+  id: string;
+  invoice_number: string;
+  date: string;
+  client: string;
+  client_phone?: string;
+  total: number;
+  profit: number;
+  discount: number;
+  payment: string;
+  payment_type?: string;
+  vendor: string;
+  vendor_id: string;
+  items: unknown[];
+  status: string;
+  created_at: string;
+  updatedAt: string;
+}
+
+export interface CachedExpense {
+  id: string;
+  label: string;
+  amount: number;
+  date: string;
+  category: string;
+  description?: string;
+  updatedAt: string;
+}
+
+export interface CachedCredit {
+  id: string;
+  client: string;
+  client_phone?: string;
+  total: number;
+  paid: number;
+  status: string;
+  date: string;
+  note?: string;
+  vendor: string;
+  sale_id?: string;
+  updatedAt: string;
+}
+
 export interface SyncMeta {
   id: string;
   lastSyncTime: string;
@@ -49,10 +92,22 @@ class LocalDB extends Dexie {
   pendingWrites!: Table<PendingWrite>;
   products!: Table<CachedProduct>;
   clients!: Table<CachedClient>;
+  sales!: Table<CachedSale>;
+  expenses!: Table<CachedExpense>;
+  credits!: Table<CachedCredit>;
   syncMeta!: Table<SyncMeta>;
 
   constructor() {
     super("erp-local");
+    this.version(3).stores({
+      pendingWrites: "++id, table, action, createdAt, retries",
+      products: "id, name, cat, updatedAt",
+      clients: "id, name, updatedAt",
+      sales: "id, invoice_number, date, client, status, created_at, updatedAt",
+      expenses: "id, date, category, updatedAt",
+      credits: "id, client, status, date, updatedAt",
+      syncMeta: "id",
+    });
     this.version(2).stores({
       pendingWrites: "++id, table, action, createdAt, retries",
       products: "id, name, cat, updatedAt",
@@ -176,4 +231,39 @@ export async function isProcessedId(id: string): Promise<boolean> {
   if (!localDB) return false;
   const meta = await localDB.syncMeta.get("sync_meta");
   return meta?.processedIds?.includes(id) ?? false;
+}
+
+export async function cacheSales(sales: CachedSale[]) {
+  if (!localDB) return;
+  await localDB.sales.bulkPut(sales);
+}
+
+export async function getCachedSales(): Promise<CachedSale[]> {
+  if (!localDB) return [];
+  return localDB.sales.orderBy("created_at").reverse().toArray();
+}
+
+export async function cacheExpenses(expenses: CachedExpense[]) {
+  if (!localDB) return;
+  await localDB.expenses.bulkPut(expenses);
+}
+
+export async function getCachedExpenses(): Promise<CachedExpense[]> {
+  if (!localDB) return [];
+  return localDB.expenses.orderBy("date").reverse().toArray();
+}
+
+export async function cacheCredits(credits: CachedCredit[]) {
+  if (!localDB) return;
+  await localDB.credits.bulkPut(credits);
+}
+
+export async function getCachedCredits(): Promise<CachedCredit[]> {
+  if (!localDB) return [];
+  return localDB.credits.toArray();
+}
+
+export async function getCachedSaleById(id: string): Promise<CachedSale | undefined> {
+  if (!localDB) return undefined;
+  return localDB.sales.get(id);
 }

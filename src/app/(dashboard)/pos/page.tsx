@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getShopInfo, getCurrentUser, logAudit, requirePinAction } from "@/lib/security";
 import { isOnline as checkIsOnline, isOnlineSync } from "@/lib/is-online";
-import { getCachedProducts } from "@/lib/sync/db";
+import { loadProductsOffline } from "@/lib/offline-data";
 import {
   Search,
   Plus,
@@ -118,17 +118,11 @@ export default function POSPage() {
   }, []);
 
   const loadProducts = useCallback(async () => {
-    if (isOffline) {
-      const cached = await getCachedProducts();
-      setProducts(cached as Product[]);
-      return;
-    }
-    const shopId = await getShopId();
-    let query = supabase.from("products").select("*").is("deleted_at", null).eq("shop_id", shopId).order("name");
-    if (search) query = query.ilike("name", `%${search}%`);
-    const { data } = await query.limit(50);
-    if (data) setProducts(data as Product[]);
-  }, [search, supabase, isOffline]);
+    const data = await loadProductsOffline() as unknown as Product[];
+    let filtered = data;
+    if (search) filtered = filtered.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+    setProducts(filtered.slice(0, 50));
+  }, [search]);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
 

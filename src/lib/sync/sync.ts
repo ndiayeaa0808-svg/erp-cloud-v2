@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import {
   getPendingWrites, removePendingWrite, updatePendingWriteRetry,
-  cacheProducts, cacheClients, addPendingWrite,
+  cacheProducts, cacheClients, cacheSales, cacheExpenses, cacheCredits, addPendingWrite,
   setLastSyncTime, getLastSyncTime, cleanupStaleWrites, clearAllPendingWrites,
   addProcessedId, isProcessedId,
 } from "./db";
@@ -236,16 +236,30 @@ export async function refreshCache() {
     const shopId = await getShopId();
     if (!shopId) return;
 
-    const [prodRes, clientRes] = await Promise.all([
+    const [prodRes, clientRes, salesRes, expensesRes, creditsRes] = await Promise.all([
       supabase.from("products").select("id,name,retail,wholesale,cost,stock,threshold,unit,cat,photo,ref,barcode,supplier,desc").is("deleted_at", null).eq("shop_id", shopId),
       supabase.from("clients").select("id,name,phone,email,address").eq("shop_id", shopId).limit(500),
+      supabase.from("sales").select("*").is("deleted_at", null).eq("shop_id", shopId).order("created_at", { ascending: false }).limit(200),
+      supabase.from("expenses").select("*").eq("shop_id", shopId).order("date", { ascending: false }).limit(200),
+      supabase.from("credits").select("*").eq("shop_id", shopId).limit(200),
     ]);
 
+    const now = new Date().toISOString();
+
     if (prodRes.data) {
-      await cacheProducts(prodRes.data.map((p) => ({ ...p, updatedAt: new Date().toISOString() })));
+      await cacheProducts(prodRes.data.map((p) => ({ ...p, updatedAt: now })));
     }
     if (clientRes.data) {
-      await cacheClients(clientRes.data.map((c) => ({ ...c, updatedAt: new Date().toISOString() })));
+      await cacheClients(clientRes.data.map((c) => ({ ...c, updatedAt: now })));
+    }
+    if (salesRes.data) {
+      await cacheSales(salesRes.data.map((s) => ({ ...s, updatedAt: now })));
+    }
+    if (expensesRes.data) {
+      await cacheExpenses(expensesRes.data.map((e) => ({ ...e, updatedAt: now })));
+    }
+    if (creditsRes.data) {
+      await cacheCredits(creditsRes.data.map((c) => ({ ...c, updatedAt: now })));
     }
   } catch {}
 }

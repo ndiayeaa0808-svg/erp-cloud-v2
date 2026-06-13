@@ -42,6 +42,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, requirePinAction, logAudit } from "@/lib/security";
+import { loadProductsOffline } from "@/lib/offline-data";
 import {
   Plus,
   Search,
@@ -90,16 +91,17 @@ export default function ProductsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const shopId = await getShopId();
-    let q = supabase.from("products").select("*").is("deleted_at", null).eq("shop_id", shopId).order("name");
-    if (search) q = q.ilike("name", `%${search}%`);
-    if (categoryFilter) q = q.eq("cat", categoryFilter);
-    const { data } = await q;
-    if (data) setProducts(data as Product[]);
-    const cats = [...new Set((data as Product[] || []).map((p: Product) => p.cat).filter(Boolean))] as string[];
-    setCategories(cats);
+    try {
+      const allProducts = await loadProductsOffline() as unknown as Product[];
+      let filtered = allProducts;
+      if (search) filtered = filtered.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+      if (categoryFilter) filtered = filtered.filter((p) => p.cat === categoryFilter);
+      setProducts(filtered);
+      const cats = [...new Set(allProducts.map((p) => p.cat).filter(Boolean))] as string[];
+      setCategories(cats);
+    } catch {}
     setLoading(false);
-  }, [search, categoryFilter, supabase]);
+  }, [search, categoryFilter]);
 
   useEffect(() => { load(); }, [load]);
 

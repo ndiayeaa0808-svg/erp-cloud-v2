@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getShopInfo, getCurrentUser, requirePinAction, logAudit } from "@/lib/security";
+import { loadSalesOffline } from "@/lib/offline-data";
 import {
   Search,
   Receipt,
@@ -71,16 +72,24 @@ export default function SalesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const shopId = await getShopId();
-    if (!shopId) { setLoading(false); return; }
-    const [activeRes, deletedRes] = await Promise.all([
-      supabase.from("sales").select("*").eq("shop_id", shopId).is("deleted_at", null).order("created_at", { ascending: false }).limit(100),
-      supabase.from("sales").select("*").eq("shop_id", shopId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(50),
-    ]);
-    if (activeRes.data) setSales(activeRes.data as Sale[]);
-    if (deletedRes.data) setDeletedSales(deletedRes.data as Sale[]);
+    try {
+      const data = await loadSalesOffline() as unknown as Sale[];
+      setSales(data.filter((s) => !s.deleted_at));
+      setDeletedSales(data.filter((s) => s.deleted_at));
+    } catch {
+      try {
+        const shopId = await getShopId();
+        if (!shopId) { setLoading(false); return; }
+        const [activeRes, deletedRes] = await Promise.all([
+          supabase.from("sales").select("*").eq("shop_id", shopId).is("deleted_at", null).order("created_at", { ascending: false }).limit(100),
+          supabase.from("sales").select("*").eq("shop_id", shopId).not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(50),
+        ]);
+        if (activeRes.data) setSales(activeRes.data as Sale[]);
+        if (deletedRes.data) setDeletedSales(deletedRes.data as Sale[]);
+      } catch {}
+    }
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 

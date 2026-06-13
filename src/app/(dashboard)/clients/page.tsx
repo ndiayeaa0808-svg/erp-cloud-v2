@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { getShopId, getCurrentUser, requirePinAction, logAudit } from "@/lib/security";
+import { loadClientsOffline } from "@/lib/offline-data";
 import { Plus, Search, Users, Pencil, Trash2, Lock } from "lucide-react";
 import type { Client } from "@/types";
 
@@ -50,16 +51,18 @@ export default function ClientsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const shopId = await getShopId();
-    if (!shopId) { setLoading(false); return; }
-    let q = supabase.from("clients").select("*").eq("shop_id", shopId).order("name");
-    if (search) q = q.ilike("name", `%${search}%`);
-    const { data } = await q;
-    if (data) setClients(data as Client[]);
-    const user = await getCurrentUser();
-    if (user) setUserId(user.id);
+    try {
+      const allClients = await loadClientsOffline() as unknown as Client[];
+      let filtered = allClients;
+      if (search) filtered = filtered.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
+      setClients(filtered);
+    } catch {}
+    try {
+      const user = await getCurrentUser();
+      if (user) setUserId(user.id);
+    } catch {}
     setLoading(false);
-  }, [search, supabase]);
+  }, [search]);
 
   useEffect(() => { load(); }, [load]);
 
