@@ -35,6 +35,8 @@ import type { Shop } from "@/types";
 import type { PendingWrite, CachedProduct, CachedClient } from "@/lib/sync/db";
 
 export default function SettingsPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   useRequirePermission("settings");
   const [shop, setShop] = useState<Shop | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,16 +57,17 @@ export default function SettingsPage() {
         const { data } = await supabase.from("shops").select("*").eq("id", shopId).single();
         if (data) {
           setShop(data as Shop);
-          localStorage.setItem("cached_shop", JSON.stringify(data));
           setLoading(false);
           return;
         }
       }
     } catch {}
-    const cached = localStorage.getItem("cached_shop");
+    const cached = typeof localStorage !== "undefined" ? localStorage.getItem("cached_shop") : null;
     if (cached) try { setShop(JSON.parse(cached) as Shop); } catch {}
     setLoading(false);
   }, [supabase]);
+
+  useEffect(() => { if (mounted) load(); }, [mounted, load]);
 
   const saveShop = async () => {
     if (!shop) return;
@@ -117,13 +120,14 @@ export default function SettingsPage() {
   };
 
   const logout = async () => {
-    localStorage.removeItem("shop_id");
     try {
+      const supabase = createClient();
       await supabase.auth.signOut();
     } catch {}
     window.location.href = "/login";
   };
 
+  if (!mounted) return <div className="text-center py-8">Chargement...</div>;
   if (loading) return <div className="text-center py-8">Chargement...</div>;
 
   return (
