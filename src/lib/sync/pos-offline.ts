@@ -1,7 +1,7 @@
 "use client";
 
 import { createSaleOffline, createCreditOffline, refreshCache, checkPendingWrites } from "./sync";
-import { getCachedProducts } from "./db";
+import { getCachedProducts, cacheProducts, cacheSales } from "./db";
 
 interface CartItem {
   product_id: string;
@@ -84,6 +84,21 @@ export async function checkoutOffline(params: {
     } catch {}
 
     await createSaleOffline(salePayload);
+
+    // Mettre à jour le cache local immédiatement
+    try {
+      const now = new Date().toISOString();
+      await cacheSales([{ ...salePayload, created_at: now, updatedAt: now } as any]);
+      const cachedProducts = await getCachedProducts();
+      if (cachedProducts.length > 0) {
+        const updated = cachedProducts.map((p) => {
+          const item = params.cart.find((c) => c.product_id === p.id);
+          if (!item) return p;
+          return { ...p, stock: Math.max(0, (p.stock || 0) - item.qty), updatedAt: now };
+        });
+        await cacheProducts(updated);
+      }
+    } catch {}
 
     const remaining = params.total - params.paidAmount;
     if (remaining > 0 && params.client) {

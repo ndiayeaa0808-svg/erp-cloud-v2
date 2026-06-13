@@ -136,6 +136,8 @@ export async function processSyncQueue() {
       description: failCount > 0 ? `${failCount} échec(s)` : undefined,
       duration: 3000,
     });
+    // Rafraîchir le cache local après sync
+    refreshCache();
   }
 
   const remaining = await getPendingWrites();
