@@ -92,6 +92,12 @@ export default function LoginPage() {
       if (data.user?.shop_id) {
         localStorage.setItem("shop_id", data.user.shop_id);
       }
+      if (data.user?.perms) {
+        localStorage.setItem("user_perms", JSON.stringify(data.user.perms));
+      }
+      if (data.user?.role) {
+        localStorage.setItem("user_role", data.user.role);
+      }
 
       // Définir la nouvelle session
       await supabase.auth.setSession(data.session);

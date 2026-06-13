@@ -57,19 +57,36 @@ export function Sidebar() {
   const [userPerms, setUserPerms] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from("users").select("role, perms").eq("id", user.id).single();
-      if (data) {
-        if (data.role === "admin") {
+      let permsData: { role?: string; perms?: Record<string, boolean> } | null = null;
+      try {
+        const { data } = await supabase.from("users").select("role, perms").eq("id", user.id).single();
+        permsData = data;
+      } catch {}
+      if (permsData) {
+        if (permsData.role === "admin") {
           const all: Record<string, boolean> = {};
           navItems.forEach((item) => { if (item.perm) all[item.perm] = true; });
           setUserPerms(all);
         } else {
-          setUserPerms(data.perms || {});
+          setUserPerms(permsData.perms || {});
+        }
+        localStorage.setItem("user_perms", JSON.stringify(permsData.perms || {}));
+        localStorage.setItem("user_role", permsData.role || "");
+      } else {
+        const cachedRole = localStorage.getItem("user_role");
+        const cachedPerms = localStorage.getItem("user_perms");
+        if (cachedRole === "admin") {
+          const all: Record<string, boolean> = {};
+          navItems.forEach((item) => { if (item.perm) all[item.perm] = true; });
+          setUserPerms(all);
+        } else if (cachedPerms) {
+          try { setUserPerms(JSON.parse(cachedPerms)); } catch {}
         }
       }
-    });
+    })();
   }, [supabase]);
 
   const visibleItems = navItems.filter((item) => {
