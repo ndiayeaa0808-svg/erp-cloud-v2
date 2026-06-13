@@ -32,18 +32,20 @@ export async function getShopId(): Promise<string | null> {
       if (typeof localStorage !== "undefined") localStorage.setItem("shop_id", sid);
       return sid;
     }
-    // Fallback : requête directe à la table users
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
-      return cached;
-    }
-    const { data: u } = await supabase.from("users").select("shop_id").eq("id", user.id).single();
-    if (u?.shop_id) {
-      if (typeof localStorage !== "undefined") localStorage.setItem("shop_id", u.shop_id);
-      return u.shop_id;
-    }
-    return null;
+    // Fallback: localStorage (utile en mode hors-ligne)
+    const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
+    if (cached) return cached;
+    // Fallback : requête directe à la table users (nécessite connexion)
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return cached;
+      const { data: u } = await supabase.from("users").select("shop_id").eq("id", user.id).single();
+      if (u?.shop_id) {
+        if (typeof localStorage !== "undefined") localStorage.setItem("shop_id", u.shop_id);
+        return u.shop_id;
+      }
+    } catch {}
+    return cached;
   } catch {
     const cached = typeof localStorage !== "undefined" ? localStorage.getItem("shop_id") : null;
     return cached;
