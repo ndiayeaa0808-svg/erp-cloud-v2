@@ -140,17 +140,25 @@ export default function ProductsPage() {
         return;
       }
     }
-    const shopId = await getShopId();
-    if (!shopId) { setError("Aucune boutique associée à ce compte"); return; }
+    const shopId = localStorage.getItem("shop_id") || "";
     try {
       if (edit.id) {
         const { id: _id, created_at: _ca, updated_at: _ua, ...clean } = edit;
-        await supabase.from("products").update(clean).eq("id", edit.id).eq("shop_id", shopId);
-        logAudit({ action: "update_product", entity: "products", entity_id: edit.id });
+        const res = await fetch("/api/products", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: edit.id, ...clean }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || "Erreur"); return; }
       } else {
-        const newId = crypto.randomUUID();
-        await supabase.from("products").insert({ ...edit, id: newId, shop_id: shopId });
-        logAudit({ action: "create_product", entity: "products", entity_id: newId, data: { name: edit.name } });
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...edit, shop_id: shopId }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || "Erreur"); return; }
       }
       setOpen(false);
       setEdit({});

@@ -37,6 +37,8 @@ export const POST = withErrorHandler(async (request: Request) => {
         return apiError("Utilisateur déjà existant mais introuvable", 409);
       }
       authId = found.id;
+      // Mettre à jour le mot de passe Auth pour l'utilisateur existant
+      await adminClient.auth.admin.updateUserById(authId, { password });
     } else {
       return apiError(error.message, 400);
     }

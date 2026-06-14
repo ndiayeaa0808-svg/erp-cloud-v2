@@ -178,9 +178,19 @@ export default function LoginPage() {
             }
             const retry = await supabase.auth.signInWithPassword({ email: adminEmail, password });
             if (retry.error) { setError(retry.error.message); return; }
-            setAdminLocalStorage();
-            window.location.href = "/";
-            return;
+            await supabase.auth.setSession(retry.data.session);
+            try {
+              const lr = await fetch("/api/auth/login", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ login: adminEmail.split("@")[0], password }),
+              });
+              const ld = await lr.json();
+              if (ld.user?.shop_id) localStorage.setItem("shop_id", ld.user.shop_id);
+              if (ld.user?.perms) localStorage.setItem("user_perms", JSON.stringify(ld.user.perms));
+              if (ld.user?.role) localStorage.setItem("user_role", ld.user.role);
+            } catch { setAdminLocalStorage(); }
+          window.location.href = "/";
+          return;
           } catch {
             setError("Erreur lors de la création du compte. Vérifie que le serveur est bien relancé après l'ajout du .env.local");
             return;
@@ -189,7 +199,16 @@ export default function LoginPage() {
         setError(signInError.message);
         return;
       }
-        setAdminLocalStorage();
+      try {
+        const lr = await fetch("/api/auth/login", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ login: adminEmail.split("@")[0], password }),
+        });
+        const ld = await lr.json();
+        if (ld.user?.shop_id) localStorage.setItem("shop_id", ld.user.shop_id);
+        if (ld.user?.perms) localStorage.setItem("user_perms", JSON.stringify(ld.user.perms));
+        if (ld.user?.role) localStorage.setItem("user_role", ld.user.role);
+      } catch { setAdminLocalStorage(); }
       window.location.href = "/";
     } catch { setError("Erreur de connexion"); }
     setLoading(false);
