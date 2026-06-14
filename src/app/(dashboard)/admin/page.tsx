@@ -44,7 +44,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.user_metadata?.role === "admin") setIsAdmin(true);
+      if (user?.user_metadata?.role === "admin" || localStorage.getItem("user_role") === "admin") setIsAdmin(true);
       else setLoading(false);
     });
   }, [supabase]);
