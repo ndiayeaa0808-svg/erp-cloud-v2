@@ -1,15 +1,24 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-export function getAdminClient() {
+export function createAdminClient() {
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!serviceRole || !supabaseUrl) {
-    throw new Error("Configuration serveur manquante");
+    return { client: null, error: "Configuration serveur manquante" };
   }
-  return createClient(supabaseUrl, serviceRole, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return {
+    client: createClient(supabaseUrl, serviceRole, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }),
+    error: null,
+  };
+}
+
+export function getAdminClient() {
+  const { client, error } = createAdminClient();
+  if (error || !client) throw new Error(error || "Erreur serveur");
+  return client;
 }
 
 export function apiError(msg: string, status = 500) {
